@@ -1,0 +1,192 @@
+GYM APP COMMANDS
+================
+
+Run these commands from the project root:
+
+	cd C:\Users\user-pc\gym
+
+
+GIT PATH FIX FOR WINDOWS
+========================
+
+If PowerShell says "git is not recognized", use this once in the current terminal:
+
+	$env:Path += ";C:\Program Files\Git\cmd"
+
+Check Git:
+
+	git --version
+
+If the PATH fix does not work, use the full Git path:
+
+	& "C:\Program Files\Git\cmd\git.exe" --version
+
+
+FIRST-TIME LOCAL GIT SETUP
+==========================
+
+Only run this if the project does not already have a .git folder:
+
+	cd C:\Users\user-pc\gym
+	git init
+	git config user.name "Your Name"
+	git config user.email "your-github-email@example.com"
+	git add .
+	git commit -m "Initial gym app"
+	git branch -M main
+	git remote add origin https://github.com/ZanderTheCoder2/gym.git
+	git push -u origin main
+
+
+SAVE YOUR CHANGES TO GITHUB
+===========================
+
+Run this after editing the app:
+
+	cd C:\Users\user-pc\gym
+	git status
+	git add .
+	git commit -m "Describe the changes"
+	git push origin main
+
+Examples of commit messages:
+
+	git commit -m "Update profile screen"
+	git commit -m "Add training exercises"
+	git commit -m "Fix bottom navigation"
+
+
+GET CHANGES FROM GITHUB
+=======================
+
+Before starting work, download the newest changes:
+
+	cd C:\Users\user-pc\gym
+	git pull origin main
+
+If you have local edits, save them first:
+
+	git add .
+	git commit -m "Save local work"
+	git pull origin main
+
+
+COLLABORATOR WORKFLOW
+=====================
+
+Add the other developer on GitHub:
+
+	Repository -> Settings -> Collaborators -> Add people
+
+Recommended: have the collaborator use a separate branch:
+
+	git pull origin main
+	git checkout -b collaborator-feature
+	git add .
+	git commit -m "Add collaborator feature"
+	git push -u origin collaborator-feature
+
+Then create a Pull Request on GitHub and merge it into main.
+
+After it is merged, update your computer:
+
+	git checkout main
+	git pull origin main
+
+
+RUN THE APP LOCALLY
+===================
+
+Install dependencies:
+
+	cd C:\Users\user-pc\gym
+	npm install
+
+Start Expo for development:
+
+	npx expo start
+
+Start the web version:
+
+	npm run web
+
+Run the TypeScript check:
+
+	npx tsc --noEmit
+
+
+EXPO ACCOUNT SETUP
+==================
+
+Install or update the EAS CLI:
+
+	npm install -g eas-cli
+
+Log in to Expo:
+
+	eas login
+
+Check the logged-in account:
+
+	eas whoami
+
+If this project is not linked to EAS yet:
+
+	eas init
+
+
+BUILD THE APP WITH EXPO EAS
+===========================
+
+Android production build:
+
+	cd C:\Users\user-pc\gym
+	eas build --platform android --profile production
+
+iPhone production build:
+
+	eas build --platform ios --profile production
+
+Both platforms:
+
+	eas build --platform all --profile production
+
+Preview/internal Android build:
+
+	eas build --platform android --profile preview
+
+The EAS command prints a build link. Open that link to watch the build and download the app when it finishes.
+
+
+IF EAS CANNOT USE GIT
+=====================
+
+Only use this workaround when EAS reports a Git/VCS error:
+
+	$env:EAS_NO_VCS="1"
+	eas build --platform android --profile production
+
+This disables EAS Git checks for the current terminal session.
+
+
+SUBMIT THE BUILD TO APP STORES
+==============================
+
+Submit the latest Android build:
+
+	eas submit --platform android --profile production
+
+Submit the latest iPhone build:
+
+	eas submit --platform ios --profile production
+
+
+IMPORTANT
+=========
+
+- Run commands from C:\Users\user-pc\gym.
+- Run git pull before beginning work.
+- Run git add, git commit, and git push after finishing work.
+- Do not commit passwords, API keys, .env files, or private credentials.
+- The GitHub repository is:
+  https://github.com/ZanderTheCoder2/gym.git

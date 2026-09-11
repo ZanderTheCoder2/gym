@@ -1,117 +1,74 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { BottomTabInset, MaxContentWidth } from '@/constants/theme';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BottomTabInset, MaxContentWidth } from '@/constants/theme';
+type Tab = 'session' | 'guide' | 'plan';
+type Exercise = { name: string; category: string; instructions: string };
+type Log = { id: number; exercise: string; weight: number; reps: number; duration: number };
+type PlanExercise = { name: string; target?: string };
+type MuscleGroup = { name: string; exercises: PlanExercise[] };
+type WorkoutDay = { id: number; title: string; groups: MuscleGroup[] };
 
-const goals = ['Build muscle', 'Lose fat', 'Get stronger', 'Stay active'];
-const activityLevels = ['Beginner', 'Intermediate', 'Advanced'];
+const exercises: Exercise[] = [
+  { name: 'Bench Press', category: 'Chest', instructions: '1. Lie on the bench with feet flat.\n2. Grip the bar slightly wider than shoulder-width.\n3. Lower to mid-chest with elbows at about 45 degrees.\n4. Press back up with control.' },
+  { name: 'Barbell Squat', category: 'Legs', instructions: '1. Position the bar across your upper back.\n2. Break at the hips and knees until thighs are parallel.\n3. Keep your chest up and drive through your heels.' },
+  { name: 'Deadlift', category: 'Back / Posterior', instructions: '1. Stand hip-width under the bar.\n2. Hinge at the hips, grip the bar, and engage your lats.\n3. Keep your back straight and pull the bar close to full extension.' },
+  { name: 'Overhead Press', category: 'Shoulders', instructions: '1. Hold the bar at collarbone level.\n2. Brace your core and press straight overhead until your arms lock out.' },
+];
+const standardTarget = '20 - 15 - 12 reps';
+const setNumbers = [1, 2, 3, 4, 5];
+const workoutDays: WorkoutDay[] = [
+  { id: 1, title: 'Shoulder / Tricep / Chest', groups: [{ name: 'Shoulders', exercises: ['Front Raises', 'Face Pulls', 'Shoulder Press', 'Side Raises'].map(name => ({ name })) }, { name: 'Triceps', exercises: ['Tricep Push Down', 'Rope Pushdown'].map(name => ({ name })) }, { name: 'Chest', exercises: ['Chest Press', 'Chest Fly', 'Push Ups', 'Incl D/B Press'].map(name => ({ name })) }] },
+  { id: 2, title: 'Back + Biceps', groups: [{ name: 'Back', exercises: ['Lat Pulldown', 'Iso Lateral Low Row', 'Iso Lateral High Row', 'Rear Delt Fly', 'Straight Arm Push', 'Back Extension'].map(name => ({ name })) }, { name: 'Biceps', exercises: ['Bicep Curl M.C', 'Hammer Curls', 'Cable Curls', 'Concentration Curls'].map(name => ({ name })) }] },
+  { id: 3, title: 'Legs / ABS', groups: [{ name: 'Legs', exercises: ['Leg Extension', 'Hamstring Curl', 'Sissy Squat', 'Step Downs', 'Squats', 'Leg Press', 'Calf Raises', 'Lunges'].map(name => ({ name })) }, { name: 'ABS', exercises: ['Sit Ups', 'Crunches', 'Leg Raises', 'Crunch M.C', 'Side Raise', 'Plank 2 min'].map(name => ({ name, target: name === 'Plank 2 min' ? '2 minutes' : standardTarget })) }] },
+  { id: 4, title: 'Shoulder / Tricep / Chest', groups: [{ name: 'Shoulders', exercises: ['Front Raises', 'Face Pulls', 'Shoulder Press', 'Side Raises'].map(name => ({ name })) }, { name: 'Triceps', exercises: ['Tricep Push Down', 'Rope Pushdown'].map(name => ({ name })) }, { name: 'Chest', exercises: ['Chest Press', 'Chest Fly', 'Push Ups', 'Incl D/B Press'].map(name => ({ name })) }] },
+  { id: 5, title: 'Back + Biceps', groups: [{ name: 'Back', exercises: ['Lat Pulldown', 'Iso Lateral Low Row', 'Iso Lateral High Row', 'Rear Delt Fly', 'Straight Arm Push', 'Back Extension'].map(name => ({ name })) }, { name: 'Biceps', exercises: ['Bicep Curl M.C', 'Hammer Curls', 'Cable Curls', 'Concentration Curls'].map(name => ({ name })) }] },
+  { id: 6, title: 'Legs / ABS', groups: [{ name: 'Legs', exercises: ['Step Downs', 'Squats', 'Leg Press', 'Leg Extension', 'Hamstring Curl', 'Sissy Squat', 'Calf Raises', 'Lunges'].map(name => ({ name })) }, { name: 'ABS', exercises: ['Crunch M.C', 'Side Raise', 'Plank 2 min', 'Sit Ups', 'Crunches', 'Leg Raises'].map(name => ({ name, target: name === 'Plank 2 min' ? '2 minutes' : standardTarget })) }] },
+];
+const planExerciseNames = workoutDays[0].groups.flatMap(group => group.exercises.map(exercise => exercise.name));
 
-export default function ProfileScreen() {
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [height, setHeight] = useState('');
+export default function GymHomeScreen() {
+  const [tab, setTab] = useState<Tab>('session');
+  const [startedAt] = useState(Date.now());
+  const [now, setNow] = useState(Date.now());
+  const [setStarted, setSetStarted] = useState<number | null>(null);
+  const [lastDuration, setLastDuration] = useState(0);
+  const [rest, setRest] = useState(0);
+  const [restInput, setRestInput] = useState('60');
   const [weight, setWeight] = useState('');
-  const [goal, setGoal] = useState(goals[0]);
-  const [activity, setActivity] = useState(activityLevels[0]);
-  const [saved, setSaved] = useState(false);
+  const [reps, setReps] = useState('');
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [activeExercise, setActiveExercise] = useState(planExerciseNames[0]);
+  const [guideName, setGuideName] = useState(exercises[0].name);
+  const [planDay, setPlanDay] = useState(1);
+  const [planWeights, setPlanWeights] = useState<Record<string, string>>({});
+  const [planSaved, setPlanSaved] = useState(false);
 
-  function update(setter: (value: string) => void, value: string) {
-    setSaved(false);
-    setter(value);
-  }
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => { if (!rest) return undefined; const timer = setInterval(() => setRest(value => Math.max(value - 1, 0)), 1000); return () => clearInterval(timer); }, [rest]);
 
-  return (
-    <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.eyebrow}>SLATER GYM</Text>
-              <Text style={styles.title}>Your profile</Text>
-              <Text style={styles.subtitle}>Set up your details so every workout fits you.</Text>
-            </View>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{name.trim() ? name.trim()[0].toUpperCase() : 'S'}</Text></View>
-          </View>
+  const guide = useMemo(() => exercises.find(item => item.name === guideName) ?? exercises[0], [guideName]);
+  const setDuration = setStarted ? Math.floor((now - setStarted) / 1000) : lastDuration;
+  const format = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  const toggleSet = () => { if (setStarted) { setLastDuration(Math.floor((Date.now() - setStarted) / 1000)); setSetStarted(null); } else { setLastDuration(0); setSetStarted(Date.now()); } };
+  const logSet = () => { const parsedWeight = Number(weight); const parsedReps = Number(reps); if (!Number.isFinite(parsedWeight) || !Number.isFinite(parsedReps) || parsedWeight < 0 || parsedReps < 0) { Alert.alert('Check your set', 'Enter valid non-negative numbers for weight and reps.'); return; } setLogs(current => [...current, { id: current.length + 1, exercise: activeExercise, weight: parsedWeight, reps: parsedReps, duration: lastDuration }]); setWeight(''); setReps(''); };
+  const startRest = () => { const seconds = Number.parseInt(restInput, 10); setRest(Number.isFinite(seconds) && seconds > 0 ? seconds : 60); };
+  const selectedPlanDay = workoutDays[planDay - 1];
+  const updatePlanWeight = (key: string, value: string) => { setPlanSaved(false); setPlanWeights(current => ({ ...current, [key]: value })); };
 
-          <View style={styles.progressRow}>
-            <View><Text style={styles.progressLabel}>PROFILE SETUP</Text><Text style={styles.progressTitle}>Make your training personal</Text></View>
-            <Text style={styles.progressValue}>{[name, age, height, weight].filter(Boolean).length}/4</Text>
-          </View>
-
-          <Text style={styles.sectionTitle}>Basic details</Text>
-          <View style={styles.card}>
-            <Field label="Name" value={name} placeholder="What should we call you?" onChangeText={(value) => update(setName, value)} />
-            <View style={styles.twoColumns}>
-              <Field label="Age" value={age} placeholder="Years" keyboardType="number-pad" onChangeText={(value) => update(setAge, value)} />
-              <Field label="Height" value={height} placeholder="cm" keyboardType="decimal-pad" onChangeText={(value) => update(setHeight, value)} />
-            </View>
-            <Field label="Weight" value={weight} placeholder="kg" keyboardType="decimal-pad" onChangeText={(value) => update(setWeight, value)} />
-          </View>
-
-          <Text style={styles.sectionTitle}>Your goal</Text>
-          <View style={styles.optionsGrid}>
-            {goals.map((option) => <Option key={option} label={option} selected={goal === option} onPress={() => { setGoal(option); setSaved(false); }} />)}
-          </View>
-
-          <Text style={styles.sectionTitle}>Experience level</Text>
-          <View style={styles.segmented}>{activityLevels.map((option) => <Pressable key={option} onPress={() => { setActivity(option); setSaved(false); }} style={[styles.segment, activity === option && styles.segmentSelected]}><Text style={[styles.segmentText, activity === option && styles.segmentTextSelected]}>{option}</Text></Pressable>)}</View>
-
-          <Pressable onPress={() => setSaved(true)} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'PROFILE SAVED' : 'SAVE PROFILE'}</Text></Pressable>
-          <Text style={styles.summary}>{saved ? `${activity} plan focused on ${goal.toLowerCase()}.` : 'Your profile stays on this device for now.'}</Text>
-        </ScrollView>
-      </SafeAreaView>
-    </View>
-  );
+  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <View style={styles.header}><View><Text style={styles.eyebrow}>SLATER GYM / WORKOUT LOG</Text><Text style={styles.title}>Train with intent.</Text><Text style={styles.subtitle}>Track the work, then earn the rest.</Text></View><View style={styles.badge}><Text style={styles.badgeLabel}>SESSION</Text><Text style={styles.badgeValue}>{format(Math.floor((now - startedAt) / 1000))}</Text></View></View>
+    <View style={styles.tabs}>{([['session', 'Log a set'], ['plan', 'Workout plan'], ['guide', 'Guide']] as const).map(([value, label]) => <Pressable key={value} onPress={() => setTab(value)} style={[styles.tab, tab === value && styles.tabActive]}><Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{label}</Text></Pressable>)}</View>
+    {tab === 'session' && <><Heading title="Choose an exercise" detail="What are you training right now?" /><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.exercisePicker}>{planExerciseNames.map(name => <Pressable key={name} onPress={() => setActiveExercise(name)} style={[styles.exerciseChoice, activeExercise === name && styles.exerciseChoiceActive]}><Text style={[styles.exerciseChoiceText, activeExercise === name && styles.exerciseChoiceTextActive]}>{name}</Text></Pressable>)}</ScrollView><View style={styles.timerRow}><Timer label="SET" value={`${setDuration}s`} /><Timer label="REST" value={rest ? `${rest}s` : 'READY'} /></View><Heading title={`Log ${activeExercise}`} detail={setStarted ? 'Timer running' : 'Start the timer for this set'} /><View style={styles.card}><View style={styles.actionRow}><Pressable onPress={toggleSet} style={[styles.button, setStarted ? styles.stopButton : undefined]}><Text style={styles.buttonText}>{setStarted ? 'STOP & COMPLETE SET' : 'START SET TIMER'}</Text></Pressable><Text style={styles.hint}>SET {logs.length + 1}</Text></View><View style={styles.inputRow}><Field label="Weight (kg)" value={weight} onChangeText={setWeight} placeholder="0.0" /><Field label="Reps completed" value={reps} onChangeText={setReps} placeholder="0" /></View><Pressable onPress={logSet} style={styles.outline}><Text style={styles.outlineText}>SAVE THIS SET</Text></Pressable></View><Heading title="Rest timer" detail="Take a break before the next set" /><View style={styles.restCard}><Field label="Rest duration (seconds)" value={restInput} onChangeText={setRestInput} placeholder="60" /><Pressable onPress={startRest} style={styles.restButton}><Text style={styles.buttonText}>START REST COUNTDOWN</Text></Pressable></View><Heading title="Completed sets" detail={`${logs.length} logged`} /><View style={styles.history}>{logs.length ? logs.map(log => <View key={log.id} style={styles.historyRow}><Text style={styles.number}>{String(log.id).padStart(2, '0')}</Text><Text style={styles.historyMain}>{log.exercise} - {log.weight} kg x {log.reps} reps</Text><Text style={styles.duration}>{log.duration}s</Text></View>) : <Text style={styles.empty}>Choose an exercise above, then save your first set.</Text>}</View></>}
+    {tab === 'guide' && <><Heading title="Exercise guide" detail="Move well, then move heavy" /><View style={styles.guidePicker}>{exercises.map(item => <Pressable key={item.name} onPress={() => setGuideName(item.name)} style={[styles.guideOption, guideName === item.name && styles.guideOptionActive]}><Text style={styles.guideOptionText}>{item.name}</Text></Pressable>)}</View><View style={styles.guideCard}><Text style={styles.guideCategory}>{guide.category.toUpperCase()}</Text><Text style={styles.guideTitle}>{guide.name}</Text><Text style={styles.instructions}>{guide.instructions}</Text></View></>}
+    {tab === 'plan' && <><Heading title="Training plan" detail="Complete your sets and save progress" /><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayRow}>{workoutDays.map(item => <Pressable key={item.id} onPress={() => { setPlanDay(item.id); setPlanSaved(false); }} style={[styles.dayButton, planDay === item.id && styles.dayButtonActive]}><Text style={[styles.dayText, planDay === item.id && styles.dayTextActive]}>Day {item.id}</Text></Pressable>)}</ScrollView><View style={styles.planHeading}><Text style={styles.scheduleTitle}>Day {selectedPlanDay.id} - {selectedPlanDay.title}</Text><Text style={styles.detail}>Target: {standardTarget}</Text></View>{selectedPlanDay.groups.map(group => <View key={group.name} style={styles.planGroup}><Text style={styles.planGroupTitle}>{group.name}</Text>{group.exercises.map(exercise => <View key={exercise.name} style={styles.planExercise}><Text style={styles.planExerciseName}>{exercise.name}</Text><Text style={styles.detail}>{exercise.target ?? standardTarget}</Text><View style={styles.planSets}>{setNumbers.map(setNumber => { const key = `${selectedPlanDay.id}-${group.name}-${exercise.name}-${setNumber}`; return <View key={key} style={styles.planSet}><Text style={styles.planSetLabel}>Set {setNumber}</Text><TextInput accessibilityLabel={`${exercise.name}, set ${setNumber}, kilograms`} keyboardType="decimal-pad" value={planWeights[key] ?? ''} onChangeText={value => updatePlanWeight(key, value)} placeholder="kg" placeholderTextColor="#9A948B" style={styles.planInput} /></View>; })}</View></View>)}</View>)}<Pressable onPress={() => setPlanSaved(true)} style={styles.savePlan}><Text style={styles.buttonText}>{planSaved ? 'PROGRESS SAVED' : 'SAVE MY PROGRESS'}</Text></Pressable></>}
+  </ScrollView></SafeAreaView></View>;
 }
 
-function Field({ label, value, placeholder, keyboardType, onChangeText }: { label: string; value: string; placeholder: string; keyboardType?: 'number-pad' | 'decimal-pad'; onChangeText: (value: string) => void }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text><TextInput keyboardType={keyboardType} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9A948B" style={styles.input} value={value} /></View>;
-}
+function Field({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string }) { return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9A948B" keyboardType="decimal-pad" style={styles.input} /></View>; }
+function Heading({ title, detail }: { title: string; detail: string }) { return <View style={styles.heading}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.detail}>{detail}</Text></View>; }
+function Timer({ label, value }: { label: string; value: string }) { return <View style={styles.timer}><Text style={styles.timerLabel}>{label}</Text><Text style={styles.timerValue}>{value}</Text></View>; }
 
-function Option({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.option, selected && styles.optionSelected]}>
-      <View style={[styles.radio, selected && styles.radioSelected]} />
-      <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F7F3EC' },
-  safeArea: { flex: 1, maxWidth: MaxContentWidth, width: '100%', alignSelf: 'center', paddingBottom: BottomTabInset },
-  content: { padding: 20, paddingBottom: 48 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  eyebrow: { color: '#71826F', fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
-  title: { color: '#1C2A22', fontSize: 32, fontWeight: '900' },
-  subtitle: { color: '#847D72', fontSize: 14, marginTop: 6, maxWidth: 270 },
-  avatar: { alignItems: 'center', backgroundColor: '#1D2D24', borderRadius: 30, height: 58, justifyContent: 'center', width: 58 },
-  avatarText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
-  progressRow: { alignItems: 'center', backgroundColor: '#1D2D24', borderRadius: 14, flexDirection: 'row', justifyContent: 'space-between', padding: 18, marginBottom: 28 },
-  progressLabel: { color: '#AFC2AE', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
-  progressTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', marginTop: 5 },
-  progressValue: { color: '#E5A15C', fontSize: 25, fontWeight: '900' },
-  sectionTitle: { color: '#1C2A22', fontSize: 19, fontWeight: '900', marginBottom: 11, marginTop: 4 },
-  card: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 12, borderWidth: 1, padding: 15, marginBottom: 22 },
-  field: { marginBottom: 14 },
-  twoColumns: { flexDirection: 'row', gap: 10 },
-  twoColumnsField: { flex: 1 },
-  fieldLabel: { color: '#716C63', fontSize: 11, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
-  input: { backgroundColor: '#F1EDE5', borderColor: '#E1D9CD', borderRadius: 7, borderWidth: 1, color: '#1C2A22', fontSize: 15, height: 44, paddingHorizontal: 12 },
-  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginBottom: 22 },
-  option: { alignItems: 'center', backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 8, borderWidth: 1, flexDirection: 'row', minWidth: '47%', padding: 13 },
-  optionSelected: { backgroundColor: '#E4EDE2', borderColor: '#719174' },
-  radio: { borderColor: '#B4B0A8', borderRadius: 8, borderWidth: 1, height: 15, marginRight: 8, width: 15 },
-  radioSelected: { backgroundColor: '#58755C', borderColor: '#58755C' },
-  optionText: { color: '#716C63', fontSize: 13, fontWeight: '700' },
-  optionTextSelected: { color: '#1C2A22' },
-  segmented: { backgroundColor: '#EDE8DE', borderRadius: 9, flexDirection: 'row', marginBottom: 28, padding: 4 },
-  segment: { alignItems: 'center', borderRadius: 6, flex: 1, paddingVertical: 11 },
-  segmentSelected: { backgroundColor: '#FFFFFF' },
-  segmentText: { color: '#847D72', fontSize: 12, fontWeight: '800' },
-  segmentTextSelected: { color: '#1C2A22' },
-  saveButton: { alignItems: 'center', backgroundColor: '#D88945', borderRadius: 8, paddingVertical: 15 },
-  saveText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900', letterSpacing: 0.8 },
-  summary: { color: '#847D72', fontSize: 12, marginTop: 14, textAlign: 'center' },
+const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: '#F5F1EA' }, safeArea: { flex: 1, maxWidth: MaxContentWidth, width: '100%', alignSelf: 'center', paddingBottom: BottomTabInset }, content: { padding: 20, paddingBottom: 56 }, header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }, eyebrow: { color: '#71826F', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 }, title: { color: '#1C2A22', fontSize: 30, fontWeight: '900' }, subtitle: { color: '#847D72', fontSize: 14, marginTop: 5 }, badge: { backgroundColor: '#1D2D24', borderRadius: 10, padding: 12, minWidth: 84 }, badgeLabel: { color: '#AFC2AE', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, badgeValue: { color: '#FFF', fontSize: 15, fontWeight: '900', marginTop: 5 }, tabs: { backgroundColor: '#E7E1D7', borderRadius: 9, flexDirection: 'row', padding: 4, marginBottom: 26 }, tab: { alignItems: 'center', borderRadius: 6, flex: 1, paddingVertical: 11 }, tabActive: { backgroundColor: '#FFF' }, tabText: { color: '#847D72', fontSize: 12, fontWeight: '800' }, tabTextActive: { color: '#1C2A22' }, exercisePicker: { gap: 8, paddingBottom: 18 }, exerciseChoice: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 8, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 10 }, exerciseChoiceActive: { backgroundColor: '#E4EDE2', borderColor: '#719174' }, exerciseChoiceText: { color: '#716C63', fontSize: 12, fontWeight: '800' }, exerciseChoiceTextActive: { color: '#1C2A22' }, timerRow: { flexDirection: 'row', gap: 10, marginBottom: 26 }, timer: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 10, borderWidth: 1, flex: 1, padding: 15 }, timerLabel: { color: '#C76D3B', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }, timerValue: { color: '#1C2A22', fontSize: 25, fontWeight: '900', marginTop: 8 }, heading: { alignItems: 'baseline', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, marginTop: 4 }, sectionTitle: { color: '#1C2A22', fontSize: 19, fontWeight: '900' }, detail: { color: '#948C80', fontSize: 11, fontWeight: '700' }, card: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 11, borderWidth: 1, padding: 15, marginBottom: 24 }, actionRow: { alignItems: 'center', flexDirection: 'row', marginBottom: 20 }, button: { alignItems: 'center', backgroundColor: '#1D2D24', borderRadius: 7, flex: 1, paddingVertical: 14 }, stopButton: { backgroundColor: '#A94F38' }, buttonText: { color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.6 }, hint: { color: '#8A847A', fontSize: 11, fontWeight: '900', marginLeft: 12 }, inputRow: { flexDirection: 'row', gap: 10 }, field: { flex: 1, marginBottom: 15 }, fieldLabel: { color: '#716C63', fontSize: 10, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' }, input: { backgroundColor: '#F1EDE5', borderColor: '#E1D9CD', borderRadius: 7, borderWidth: 1, color: '#1C2A22', fontSize: 15, height: 44, paddingHorizontal: 12 }, outline: { alignItems: 'center', borderColor: '#CFC6B9', borderRadius: 7, borderWidth: 1, paddingVertical: 13 }, outlineText: { color: '#55745B', fontSize: 11, fontWeight: '900' }, restCard: { backgroundColor: '#E8EFE5', borderRadius: 11, padding: 15, marginBottom: 24 }, restButton: { alignItems: 'center', backgroundColor: '#55745B', borderRadius: 7, paddingVertical: 13 }, history: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 11, borderWidth: 1, paddingHorizontal: 15 }, historyRow: { alignItems: 'center', borderBottomColor: '#EEE9E1', borderBottomWidth: 1, flexDirection: 'row', paddingVertical: 14 }, number: { color: '#C76D3B', fontSize: 12, fontWeight: '900', width: 34 }, historyMain: { color: '#27352C', flex: 1, fontSize: 14, fontWeight: '800' }, duration: { color: '#948C80', fontSize: 12, fontWeight: '700' }, empty: { color: '#948C80', fontSize: 13, paddingVertical: 18 }, dayRow: { gap: 8, paddingBottom: 18 }, dayButton: { alignItems: 'center', borderColor: '#D6D0C5', borderRadius: 8, borderWidth: 1, paddingHorizontal: 17, paddingVertical: 11 }, dayButtonActive: { backgroundColor: '#1D2D24', borderColor: '#1D2D24' }, dayText: { color: '#716C63', fontSize: 12, fontWeight: '900' }, dayTextActive: { color: '#FFF' }, scheduleTitle: { color: '#1C2A22', fontSize: 20, fontWeight: '900', marginBottom: 12 }, scheduleRow: { alignItems: 'center', borderBottomColor: '#EEE9E1', borderBottomWidth: 1, flexDirection: 'row', paddingVertical: 14 }, addRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 15 }, addInput: { backgroundColor: '#F1EDE5', borderColor: '#E1D9CD', borderRadius: 7, borderWidth: 1, color: '#1C2A22', flex: 1, height: 44, paddingHorizontal: 12 }, addButton: { alignItems: 'center', backgroundColor: '#C76D3B', borderRadius: 7, height: 44, justifyContent: 'center', width: 44 }, addText: { color: '#FFF', fontSize: 25 }, guidePicker: { gap: 8, marginBottom: 20 }, guideOption: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 8, borderWidth: 1, padding: 14 }, guideOptionActive: { backgroundColor: '#E4EDE2', borderColor: '#719174' }, guideOptionText: { color: '#27352C', fontSize: 14, fontWeight: '800' }, guideCard: { backgroundColor: '#1D2D24', borderRadius: 11, padding: 20 }, guideCategory: { color: '#AFC2AE', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }, guideTitle: { color: '#FFF', fontSize: 25, fontWeight: '900', marginBottom: 18, marginTop: 7 }, instructions: { color: '#E6EEE4', fontSize: 15, lineHeight: 26 }, planHeading: { borderBottomColor: '#DDD6CA', borderBottomWidth: 1, marginBottom: 20, paddingBottom: 15 }, planGroup: { marginBottom: 24 }, planGroupTitle: { color: '#71826F', fontSize: 12, fontWeight: '900', letterSpacing: 1.1, marginBottom: 9, textTransform: 'uppercase' }, planExercise: { backgroundColor: '#FFFDFA', borderColor: '#E2DBD0', borderRadius: 10, borderWidth: 1, marginBottom: 10, padding: 14 }, planExerciseName: { color: '#27352C', fontSize: 16, fontWeight: '900', marginBottom: 4 }, planSets: { flexDirection: 'row', gap: 7, marginTop: 13 }, planSet: { flex: 1 }, planSetLabel: { color: '#8A847A', fontSize: 10, fontWeight: '800', marginBottom: 5, textAlign: 'center' }, planInput: { backgroundColor: '#F1EDE5', borderColor: '#E1D9CD', borderRadius: 6, borderWidth: 1, color: '#1C2A22', fontSize: 14, fontWeight: '800', height: 38, paddingHorizontal: 2, textAlign: 'center' }, savePlan: { alignItems: 'center', backgroundColor: '#C76D3B', borderRadius: 7, marginBottom: 20, paddingVertical: 14 },
 });

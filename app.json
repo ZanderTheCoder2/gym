@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "gym",
+    "name": "Forged Fitness",
     "slug": "gym",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "gym",

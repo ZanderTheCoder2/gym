@@ -58,7 +58,6 @@ export default function GymHomeScreen() {
 
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your workouts</Text><Text style={styles.sectionHint}>{programs.length ? 'Saved locally' : 'Start in Explore'}</Text></View>
     {programs.length ? programs.map(program => <ProgramCard key={program.id} program={program} onOpen={() => setActiveProgramId(program.id)} onDelete={() => deleteProgram(program)} />) : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No programs yet</Text><Text style={styles.emptyCopy}>Build your first week in Explore. It will appear here automatically after you save it.</Text></View>}
-    <WeeklyHistory trainingDates={trainingDates} />
   </ScrollView></SafeAreaView></View>;
 }
 

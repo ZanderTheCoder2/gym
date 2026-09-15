@@ -6,22 +6,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Profile = { name: string; goal: string; level: string; equipment: string };
-const profileStorageKey = '@gym/profile';
 const historyStorageKey = '@gym/training-history';
-const defaultProfile: Profile = { name: '', goal: 'Build strength', level: 'Intermediate', equipment: 'Full gym' };
 
 export default function GymHomeScreen() {
-  const [profile, setProfile] = useState<Profile>(defaultProfile);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
   const [trainingDates, setTrainingDates] = useState<Record<string, number>>({});
 
   const loadDashboard = useCallback(() => {
-    Promise.all([AsyncStorage.getItem(profileStorageKey), AsyncStorage.getItem(programsStorageKey), AsyncStorage.getItem(historyStorageKey)])
-      .then(([profileValue, programsValue, historyValue]) => {
-        if (profileValue) setProfile(JSON.parse(profileValue));
+    Promise.all([AsyncStorage.getItem(programsStorageKey), AsyncStorage.getItem(historyStorageKey)])
+      .then(([programsValue, historyValue]) => {
         if (programsValue) setPrograms(JSON.parse(programsValue).flatMap((item: unknown) => { const normalized = normalizeProgram(item); return normalized ? [normalized] : []; }));
         if (historyValue) { const parsedHistory: unknown = JSON.parse(historyValue); setTrainingDates(normalizeTrainingHistory(parsedHistory)); }
       })
@@ -30,7 +25,6 @@ export default function GymHomeScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { loadDashboard(); }, [loadDashboard]));
-  useEffect(() => { if (loaded) AsyncStorage.setItem(profileStorageKey, JSON.stringify(profile)).catch(() => undefined); }, [profile, loaded]);
   useEffect(() => { if (loaded) AsyncStorage.setItem(programsStorageKey, JSON.stringify(programs)).catch(() => undefined); }, [programs, loaded]);
   useEffect(() => { if (loaded) AsyncStorage.setItem(historyStorageKey, JSON.stringify(trainingDates)).catch(() => undefined); }, [trainingDates, loaded]);
 
@@ -39,30 +33,25 @@ export default function GymHomeScreen() {
   const activeProgram = programs.find(program => program.id === activeProgramId);
   const updateProgram = (updatedProgram: Program) => setPrograms(current => current.map(program => program.id === updatedProgram.id ? updatedProgram : program));
   const deleteProgram = (program: Program) => Alert.alert('Delete this plan?', `Remove ${program.name} from your saved workouts?`, [{ text: 'Keep plan', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => setPrograms(current => current.filter(item => item.id !== program.id)) }]);
-  const markTrainingDay = () => undefined;
+  const markTrainingDay = () => { const today = localDateKey(new Date()); setTrainingDates(current => ({ ...current, [today]: current[today] ?? 0 })); };
   const saveTrainingDuration = (seconds: number) => { const today = localDateKey(new Date()); setTrainingDates(current => { const history = current && typeof current === 'object' && !Array.isArray(current) ? current : {}; return { ...history, [today]: Math.max(history[today] ?? 0, seconds) }; }); };
 
   if (activeProgram) return <TrainingScreen program={activeProgram} onChange={updateProgram} onBack={() => setActiveProgramId(null)} onSessionStart={markTrainingDay} onSessionEnd={saveTrainingDuration} />;
 
   return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    <View style={styles.topline}><Text style={styles.eyebrow}>SLATER GYM / PROFILE</Text><View style={styles.statusDot} /></View>
-    <Text style={styles.title}>{profile.name ? `Good to see you, ${profile.name}.` : 'Make this gym yours.'}</Text>
-    <Text style={styles.subtitle}>Your training identity, goals, and programs in one place.</Text>
+    <View style={styles.topline}><Text style={styles.eyebrow}>SLATER GYM / TRAINING</Text><View style={styles.statusDot} /></View>
+    <Text style={styles.title}>Train with intent.</Text>
+    <Text style={styles.subtitle}>Your saved programs, ready for the next session.</Text>
 
-    <View style={styles.identityCard}><View style={styles.avatar}><Text style={styles.avatarText}>{profile.name ? profile.name.slice(0, 1).toUpperCase() : '?'}</Text></View><View style={styles.identityCopy}><Text style={styles.identityName}>{profile.name || 'Your profile'}</Text><Text style={styles.identityMeta}>{profile.level} · {profile.goal}</Text></View></View>
-
-    <Text style={styles.sectionTitle}>Profile details</Text>
-    <View style={styles.formCard}><ProfileField label="Name" value={profile.name} placeholder="Your name" onChangeText={value => setProfile(current => ({ ...current, name: value }))} /><ProfileField label="Main goal" value={profile.goal} placeholder="Build strength" onChangeText={value => setProfile(current => ({ ...current, goal: value }))} /><ProfileField label="Experience" value={profile.level} placeholder="Intermediate" onChangeText={value => setProfile(current => ({ ...current, level: value }))} /><ProfileField label="Equipment access" value={profile.equipment} placeholder="Full gym" onChangeText={value => setProfile(current => ({ ...current, equipment: value }))} /></View>
+    {programs[0] && <View style={styles.timerCard}><View><Text style={styles.timerLabel}>NEXT SESSION</Text><Text style={styles.timerValue}>{programs[0].name}</Text><Text style={styles.identityMeta}>{programs[0].days[0]?.name ?? 'Training day'}</Text></View><Pressable onPress={() => setActiveProgramId(programs[0].id)} style={styles.timerButton}><Text style={styles.timerButtonText}>START</Text></Pressable></View>}
 
     <View style={styles.statsRow}><Stat value={String(programs.length)} label="programs" /><Stat value={String(totalDays)} label="training days" /><Stat value={String(totalExercises)} label="exercises" /></View>
 
-    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your workouts</Text><Text style={styles.sectionHint}>{programs.length ? 'Saved locally' : 'Start in Explore'}</Text></View>
-    {programs.length ? programs.map(program => <ProgramCard key={program.id} program={program} onOpen={() => setActiveProgramId(program.id)} onDelete={() => deleteProgram(program)} />) : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No programs yet</Text><Text style={styles.emptyCopy}>Build your first week in Explore. It will appear here automatically after you save it.</Text></View>}
-  </ScrollView></SafeAreaView></View>;
-}
+    <WeeklyHistory trainingDates={trainingDates} />
 
-function ProfileField({ label, value, placeholder, onChangeText }: { label: string; value: string; placeholder: string; onChangeText: (value: string) => void }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9A948B" style={styles.input} /></View>;
+    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your workouts</Text><Text style={styles.sectionHint}>{programs.length ? 'Saved locally' : 'Start in Workouts'}</Text></View>
+    {programs.length ? programs.map(program => <ProgramCard key={program.id} program={program} onOpen={() => setActiveProgramId(program.id)} onDelete={() => deleteProgram(program)} />) : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No programs yet</Text><Text style={styles.emptyCopy}>Build your first week in Workouts. It will appear here automatically after you save it.</Text></View>}
+  </ScrollView></SafeAreaView></View>;
 }
 
 function Stat({ value, label }: { value: string; label: string }) { return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
@@ -102,7 +91,7 @@ function TrainingScreen({ program, onChange, onBack, onSessionStart, onSessionEn
   const updateSet = (exerciseName: string, setIndex: number, field: 'weight' | 'reps', value: string) => onChange({ ...program, days: program.days.map((currentDay, index) => index !== dayIndex ? currentDay : { ...currentDay, exercises: currentDay.exercises.map(exercise => exercise.name !== exerciseName ? exercise : { ...exercise, sets: exercise.sets.map((set, index) => index === setIndex ? { ...set, [field]: value } : set) }) }) });
   const startRest = () => setRest(Number.parseInt(restInput, 10) || 60);
   const toggleSession = () => setSessionStartedAt(current => { if (current) { onSessionEnd(Math.floor((Date.now() - current) / 1000)); return null; } onSessionStart(); return Date.now(); });
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO PROFILE</Text></Pressable><Text style={styles.eyebrow}>ACTIVE WORKOUT</Text><Text style={styles.title}>{program.name}</Text><Text style={styles.subtitle}>Start the session before your first set. Stop it when training is complete.</Text><View style={styles.timerCard}><View><Text style={styles.timerLabel}>SESSION</Text><Text style={styles.timerValue}>{format(sessionStartedAt ? Math.floor((now - sessionStartedAt) / 1000) : 0)}</Text></View><Pressable onPress={toggleSession} style={styles.timerButton}><Text style={styles.timerButtonText}>{sessionStartedAt ? 'END SESSION' : 'START SESSION'}</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabs}>{program.days.map((currentDay, index) => <Pressable key={`${currentDay.name}-${index}`} onPress={() => setDayIndex(index)} style={[styles.dayTab, dayIndex === index && styles.dayTabActive]}><Text style={[styles.dayTabText, dayIndex === index && styles.dayTabTextActive]}>{currentDay.name}</Text></Pressable>)}</ScrollView><Text style={styles.sectionTitle}>{day.name}</Text>{day.exercises.map(exercise => <View key={exercise.name} style={styles.trainingCard}><View style={styles.trainingHeader}><Text style={styles.trainingName}>{exercise.name}</Text><Text style={styles.muted}>5 sets</Text></View><View style={styles.setHeader}><Text style={styles.setHeaderText}>SET</Text><Text style={styles.setHeaderText}>WEIGHT</Text><Text style={styles.setHeaderText}>REPS</Text></View>{exercise.sets.map((set, index) => <View key={`${exercise.name}-${index}`} style={styles.setRow}><Text style={styles.setNumber}>{index + 1}</Text><TextInput value={set.weight} onChangeText={value => updateSet(exercise.name, index, 'weight', value)} placeholder="kg" placeholderTextColor="#9A948B" keyboardType="decimal-pad" style={styles.setInput} /><TextInput value={set.reps} onChangeText={value => updateSet(exercise.name, index, 'reps', value)} placeholder="reps" placeholderTextColor="#9A948B" keyboardType="number-pad" style={styles.setInput} /></View>)}</View>)}<View style={styles.restCard}><View><Text style={styles.timerLabel}>REST TIMER</Text><Text style={styles.timerValue}>{rest ? format(rest) : 'READY'}</Text></View><View style={styles.restActions}><TextInput value={restInput} onChangeText={setRestInput} keyboardType="number-pad" placeholder="sec" placeholderTextColor="#9A948B" style={styles.restInput} /><Pressable onPress={startRest} style={styles.timerButton}><Text style={styles.timerButtonText}>START REST</Text></Pressable></View></View></ScrollView></SafeAreaView></View>;
+  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO PROGRAMS</Text></Pressable><Text style={styles.eyebrow}>ACTIVE WORKOUT</Text><Text style={styles.title}>{program.name}</Text><Text style={styles.subtitle}>Log each set as you go. Your progress is saved automatically.</Text><View style={styles.timerCard}><View><Text style={styles.timerLabel}>SESSION</Text><Text style={styles.timerValue}>{format(sessionStartedAt ? Math.floor((now - sessionStartedAt) / 1000) : 0)}</Text></View><Pressable onPress={toggleSession} style={styles.timerButton}><Text style={styles.timerButtonText}>{sessionStartedAt ? 'END SESSION' : 'START SESSION'}</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabs}>{program.days.map((currentDay, index) => <Pressable key={`${currentDay.name}-${index}`} onPress={() => setDayIndex(index)} style={[styles.dayTab, dayIndex === index && styles.dayTabActive]}><Text style={[styles.dayTabText, dayIndex === index && styles.dayTabTextActive]}>{currentDay.name}</Text></Pressable>)}</ScrollView><Text style={styles.sectionTitle}>{day.name}</Text>{day.exercises.map(exercise => <View key={exercise.name} style={styles.trainingCard}><View style={styles.trainingHeader}><Text style={styles.trainingName}>{exercise.name}</Text><Text style={styles.muted}>{exercise.sets.length} sets</Text></View><View style={styles.setHeader}><Text style={styles.setHeaderText}>SET</Text><Text style={styles.setHeaderText}>WEIGHT</Text><Text style={styles.setHeaderText}>REPS</Text></View>{exercise.sets.map((set, index) => <View key={`${exercise.name}-${index}`} style={styles.setRow}><Text style={styles.setNumber}>{index + 1}</Text><TextInput value={set.weight} onChangeText={value => updateSet(exercise.name, index, 'weight', value)} placeholder="kg" placeholderTextColor="#9A948B" keyboardType="decimal-pad" style={styles.setInput} /><TextInput value={set.reps} onChangeText={value => updateSet(exercise.name, index, 'reps', value)} placeholder="reps" placeholderTextColor="#9A948B" keyboardType="number-pad" style={styles.setInput} /></View>)}</View>)}<View style={styles.restCard}><View><Text style={styles.timerLabel}>REST TIMER</Text><Text style={styles.timerValue}>{rest ? format(rest) : 'READY'}</Text></View><View style={styles.restActions}><TextInput value={restInput} onChangeText={setRestInput} keyboardType="number-pad" placeholder="sec" placeholderTextColor="#9A948B" style={styles.restInput} /><Pressable onPress={startRest} style={styles.timerButton}><Text style={styles.timerButtonText}>START REST</Text></Pressable></View></View></ScrollView></SafeAreaView></View>;
 }
 
 const styles = StyleSheet.create({

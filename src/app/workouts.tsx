@@ -1,40 +1,44 @@
 import { BottomTabInset, MaxContentWidth } from '@/constants/theme';
-import { exerciseCategories, exercises, filterExercises, type ExerciseFilters } from '@/data/exercises';
+import { exercises, type Difficulty, type Exercise } from '@/data/exercises';
 import { createWorkoutExercise, normalizeProgram, programsStorageKey, setNumbers, type Program, type SetEntry } from '@/data/programs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const filterKeys: (keyof ExerciseFilters)[] = ['category', 'equipment', 'type', 'difficulty', 'movementPattern'];
-const filterValues: Record<keyof ExerciseFilters, string[]> = {
-  category: [...exerciseCategories],
-  equipment: [...new Set(exercises.map(exercise => exercise.equipment))],
-  type: ['Compound', 'Isolation'],
-  difficulty: ['Beginner', 'Intermediate', 'Advanced'],
-  movementPattern: [...new Set(exercises.map(exercise => exercise.movementPattern))],
-};
-
 export default function WorkoutsScreen() {
-  const [mode, setMode] = useState<'library' | 'chooser' | 'builder' | 'tailored'>('library');
-  const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState<ExerciseFilters>({});
-  const results = useMemo(() => filterExercises(filters).filter(exercise => exercise.name.toLowerCase().includes(query.toLowerCase())), [filters, query]);
-  const cycleFilter = (filter: keyof ExerciseFilters) => setFilters(current => { const values = filterValues[filter]; const nextIndex = (values.indexOf(current[filter] as string) + 1) % (values.length + 1); return { ...current, [filter]: values[nextIndex] }; });
+  const [mode, setMode] = useState<'chooser' | 'builder' | 'tailored'>('chooser');
 
   if (mode === 'builder') return <ProgramBuilder onBack={() => setMode('chooser')} />;
   if (mode === 'tailored') return <TailoredBuilder onBack={() => setMode('chooser')} />;
-  if (mode === 'chooser') return <ProgramChoice onBack={() => setMode('library')} onTailored={() => setMode('tailored')} onManual={() => setMode('builder')} />;
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><Text style={styles.eyebrow}>FORGED FITNESS / WORKOUTS</Text><Text style={styles.title}>Train your way.</Text><Text style={styles.subtitle}>Browse the library or create a program built around the movements you want to train.</Text><Pressable onPress={() => setMode('chooser')} style={styles.createButton}><Text style={styles.createButtonText}>CREATE A PROGRAM</Text><Text style={styles.createButtonHint}>Choose a tailored plan or build every detail yourself.</Text></Pressable><Text style={styles.libraryTitle}>Exercise library</Text><TextInput value={query} onChangeText={setQuery} placeholder="Search exercises" placeholderTextColor="#9A948B" style={styles.search} /><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{filterKeys.map(filter => <Pressable key={filter} onPress={() => cycleFilter(filter)} style={styles.filter}><Text style={styles.filterText}>{filters[filter] ?? `All ${filter === 'movementPattern' ? 'movements' : filter}`}</Text></Pressable>)}</ScrollView><Text style={styles.resultCount}>{results.length} exercises</Text>{results.map(exercise => <ExerciseCard key={exercise.id} exercise={exercise} />)}</ScrollView></SafeAreaView></View>;
+  return <ProgramChoice onTailored={() => setMode('tailored')} onManual={() => setMode('builder')} />;
 }
 
-function ExerciseCard({ exercise }: { exercise: typeof exercises[number] }) { return <View style={styles.card}><View style={styles.cardTop}><Text style={styles.name}>{exercise.name}</Text><Text style={styles.type}>{exercise.type.toUpperCase()}</Text></View><Text style={styles.meta}>{exercise.category} · {exercise.equipment} · {exercise.difficulty}</Text><Text style={styles.muscles}>Primary: {exercise.primaryMuscle}</Text><Text style={styles.movement}>{exercise.movementPattern} · Secondary: {exercise.secondaryMuscles.join(', ') || 'None'}</Text></View>; }
-
-function ProgramChoice({ onBack, onTailored, onManual }: { onBack: () => void; onTailored: () => void; onManual: () => void }) {
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO WORKOUTS</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / CREATE</Text><Text style={styles.title}>How do you want to train?</Text><Text style={styles.subtitle}>Choose the level of guidance that fits you today.</Text><Pressable onPress={onTailored} style={styles.optionCard}><Text style={styles.optionKicker}>OPTION ONE</Text><Text style={styles.optionTitle}>Create me a tailored workout</Text><Text style={styles.optionText}>Answer a few questions and Forged Fitness will assemble a program using only exercises from the canonical library.</Text></Pressable><Pressable onPress={onManual} style={styles.optionCardLight}><Text style={styles.optionKicker}>OPTION TWO</Text><Text style={styles.optionTitle}>Create your program</Text><Text style={styles.optionText}>Choose every day, exercise, set, weight, and rep yourself.</Text></Pressable></ScrollView></SafeAreaView></View>;
+function ProgramChoice({ onTailored, onManual }: { onTailored: () => void; onManual: () => void }) {
+  return <View style={[styles.container, { backgroundColor: '#000000' }]}><SafeAreaView style={[styles.safeArea, { backgroundColor: '#000000' }]}><ScrollView contentContainerStyle={styles.content}><Text style={[styles.eyebrow, { color: '#FFFFFF' }]}>FORGED FITNESS / WORKOUTS</Text><Text style={[styles.title, { color: '#FFFFFF' }]}>Build your next week.</Text><Text style={[styles.subtitle, { color: '#B8B8B8' }]}>Choose how much help you want. Your saved programs will appear on Home.</Text><Pressable onPress={onTailored} style={[styles.optionCard, { backgroundColor: '#171717', borderColor: '#FFFFFF' }]}><Text style={[styles.optionKicker, { color: '#FFFFFF' }]}>OPTION ONE</Text><Text style={[styles.optionTitle, { color: '#FFFFFF' }]}>Create me a tailored workout</Text><Text style={[styles.optionText, { color: '#B8B8B8' }]}>Answer a few questions and get a plan matched to your goal, experience, days, equipment, and time.</Text><Text style={[styles.optionText, { color: '#FFFFFF', fontWeight: '900', marginTop: 14 }]}>START SETUP  →</Text></Pressable><Pressable onPress={onManual} style={[styles.optionCardLight, { backgroundColor: '#090909', borderColor: '#4A4A4A' }]}><Text style={[styles.optionKicker, { color: '#FFFFFF' }]}>OPTION TWO</Text><Text style={[styles.optionTitle, { color: '#FFFFFF' }]}>Create your program</Text><Text style={[styles.optionText, { color: '#B8B8B8' }]}>Build each training day yourself, choose exercises, and enter your sets and reps.</Text><Text style={[styles.optionText, { color: '#FFFFFF', fontWeight: '900', marginTop: 14 }]}>BUILD MANUALLY  →</Text></Pressable></ScrollView></SafeAreaView></View>;
 }
 
 function TailoredBuilder({ onBack }: { onBack: () => void }) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState({ goal: 'Build strength', level: 'Intermediate', days: '3', equipment: 'Full gym', sessionLength: '60 minutes' });
+  const [generated, setGenerated] = useState<Program | null>(null);
+  const [saved, setSaved] = useState(false);
+  const steps = [
+    { key: 'goal', label: 'What are you training for?', description: 'This sets the main emphasis of your plan.', options: ['Build strength', 'Build muscle', 'Improve fitness', 'Lose fat'] },
+    { key: 'level', label: 'How much training experience do you have?', description: 'We will match exercise difficulty and training volume to you.', options: ['Beginner', 'Intermediate', 'Advanced'] },
+    { key: 'days', label: 'How many days can you train?', description: 'Your answer determines the weekly muscle-group split.', options: ['1', '2', '3', '4', '5'] },
+    { key: 'equipment', label: 'What equipment do you have?', description: 'Only movements you can actually perform will be included.', options: ['Full gym', 'Dumbbells', 'Barbell', 'Bodyweight'] },
+    { key: 'sessionLength', label: 'How long is each session?', description: 'Longer sessions add more accessory and muscle-group work.', options: ['30 minutes', '45 minutes', '60 minutes'] },
+  ] as const;
+  const currentStep = steps[step];
+  const currentValue = answers[currentStep.key];
+  const choose = (value: string) => setAnswers(current => ({ ...current, [currentStep.key]: value }));
+  const next = () => { if (step < steps.length - 1) setStep(current => current + 1); else { setGenerated(buildTailoredProgram({ ...answers, days: Number(answers.days) })); setSaved(false); } };
+  const save = async () => { if (!generated) return; const stored = await AsyncStorage.getItem(programsStorageKey); const existing = stored ? JSON.parse(stored) : []; await AsyncStorage.setItem(programsStorageKey, JSON.stringify([...existing.filter((item: Program) => item.id !== generated.id), generated])); setSaved(true); };
+  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable onPress={() => step === 0 ? onBack() : setStep(current => current - 1)} style={styles.backButton}><Text style={styles.backText}>{step === 0 ? 'BACK TO OPTIONS' : 'BACK'}</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / SETUP {step + 1} OF {steps.length}</Text><View style={{ backgroundColor: '#E2DBD0', borderRadius: 4, height: 6, marginTop: 18, overflow: 'hidden' }}><View style={{ backgroundColor: '#C76D3B', borderRadius: 4, height: 6, width: `${((step + 1) / steps.length) * 100}%` }} /></View><Text style={styles.title}>{currentStep.label}</Text><Text style={styles.subtitle}>{currentStep.description}</Text><View style={{ marginTop: 18 }}>{currentStep.options.map(option => <Pressable key={option} onPress={() => choose(option)} style={option === currentValue ? styles.optionCard : styles.optionCardLight}><Text style={styles.optionTitle}>{option}</Text>{option === currentValue && <Text style={styles.optionText}>Selected</Text>}</Pressable>)}</View><Pressable onPress={next} style={styles.generateButton}><Text style={styles.saveText}>{step === steps.length - 1 ? 'GENERATE MY WORKOUT' : 'CONTINUE'}</Text></Pressable>{generated && <View style={styles.generatedCard}><Text style={styles.optionKicker}>RECOMMENDED PROGRAM</Text><Text style={styles.optionTitle}>{generated.name}</Text>{generated.days.map(day => <View key={day.name} style={styles.generatedDay}><Text style={styles.dayName}>{day.name}</Text><Text style={styles.dayExercises}>{day.exercises.map(exercise => exercise.name).join(' · ')}</Text></View>)}<Pressable onPress={save} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED TO HOME' : 'SAVE PROGRAM'}</Text></Pressable></View>}</ScrollView></SafeAreaView></View>;
+}
+
+function TailoredBuilderLegacy({ onBack }: { onBack: () => void }) {
   const [goal, setGoal] = useState('Build strength');
   const [level, setLevel] = useState('Intermediate');
   const [days, setDays] = useState('3');
@@ -43,20 +47,81 @@ function TailoredBuilder({ onBack }: { onBack: () => void }) {
   const [generated, setGenerated] = useState<Program | null>(null);
   const [saved, setSaved] = useState(false);
   const cycle = (value: string, values: string[], setter: (next: string) => void) => setter(values[(values.indexOf(value) + 1) % values.length]);
-  const generate = () => { setGenerated(buildTailoredProgram({ goal, level, days: Number(days), equipment })); setSaved(false); };
+  const generate = () => { setGenerated(buildTailoredProgram({ goal, level, days: Number(days), equipment, sessionLength })); setSaved(false); };
   const save = async () => { if (!generated) return; const stored = await AsyncStorage.getItem(programsStorageKey); const existing = stored ? JSON.parse(stored) : []; await AsyncStorage.setItem(programsStorageKey, JSON.stringify([...existing.filter((item: Program) => item.id !== generated.id), generated])); setSaved(true); };
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO OPTIONS</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / TAILORED PLAN</Text><Text style={styles.title}>Tell us how you train.</Text><Text style={styles.subtitle}>Every generated day contains 6 database exercises planned for a 60-minute session.</Text><Question label="Goal" value={goal} onPress={() => cycle(goal, ['Build strength', 'Build muscle', 'Improve fitness', 'Lose fat'], setGoal)} /><Question label="Experience" value={level} onPress={() => cycle(level, ['Beginner', 'Intermediate', 'Advanced'], setLevel)} /><Question label="Days per week" value={days} onPress={() => cycle(days, ['1', '2', '3', '4', '5'], setDays)} /><Question label="Equipment" value={equipment} onPress={() => cycle(equipment, ['Full gym', 'Dumbbells', 'Barbell', 'Bodyweight'], setEquipment)} /><Question label="Session length" value={sessionLength} onPress={() => cycle(sessionLength, ['60 minutes'], setSessionLength)} /><Pressable onPress={generate} style={styles.generateButton}><Text style={styles.saveText}>GENERATE WORKOUT</Text></Pressable>{generated && <View style={styles.generatedCard}><Text style={styles.optionKicker}>RECOMMENDED PROGRAM</Text><Text style={styles.optionTitle}>{generated.name}</Text>{generated.days.map(day => <View key={day.name} style={styles.generatedDay}><Text style={styles.dayName}>{day.name}</Text><Text style={styles.dayExercises}>{day.exercises.map(exercise => exercise.name).join(' · ')}</Text></View>)}<Pressable onPress={save} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED TO HOME' : 'SAVE PROGRAM'}</Text></Pressable></View>}</ScrollView></SafeAreaView></View>;
+  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO OPTIONS</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / TAILORED PLAN</Text><Text style={styles.title}>Tell us how you train.</Text><Text style={styles.subtitle}>Your level, equipment, goal, days, and session length all shape the plan.</Text><Question label="Goal" value={goal} onPress={() => cycle(goal, ['Build strength', 'Build muscle', 'Improve fitness', 'Lose fat'], setGoal)} /><Question label="Experience" value={level} onPress={() => cycle(level, ['Beginner', 'Intermediate', 'Advanced'], setLevel)} /><Question label="Days per week" value={days} onPress={() => cycle(days, ['1', '2', '3', '4', '5'], setDays)} /><Question label="Equipment" value={equipment} onPress={() => cycle(equipment, ['Full gym', 'Dumbbells', 'Barbell', 'Bodyweight'], setEquipment)} /><Question label="Session length" value={sessionLength} onPress={() => cycle(sessionLength, ['30 minutes', '45 minutes', '60 minutes'], setSessionLength)} /><Pressable onPress={generate} style={styles.generateButton}><Text style={styles.saveText}>GENERATE WORKOUT</Text></Pressable>{generated && <View style={styles.generatedCard}><Text style={styles.optionKicker}>RECOMMENDED PROGRAM</Text><Text style={styles.optionTitle}>{generated.name}</Text>{generated.days.map(day => <View key={day.name} style={styles.generatedDay}><Text style={styles.dayName}>{day.name}</Text><Text style={styles.dayExercises}>{day.exercises.map(exercise => exercise.name).join(' · ')}</Text></View>)}<Pressable onPress={save} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED TO HOME' : 'SAVE PROGRAM'}</Text></Pressable></View>}</ScrollView></SafeAreaView></View>;
 }
 
 function Question({ label, value, onPress }: { label: string; value: string; onPress: () => void }) { return <Pressable onPress={onPress} style={styles.question}><Text style={styles.questionLabel}>{label}</Text><Text style={styles.questionValue}>{value}  ›</Text></Pressable>; }
 
-function buildTailoredProgram({ goal, level, days, equipment }: { goal: string; level: string; days: number; equipment: string }): Program {
-  const unavailable = equipment === 'Bodyweight' ? ['Barbell', 'Dumbbells', 'Dumbbell', 'Cable Machine', 'EZ Bar', 'Kettlebell', 'Landmine'] : equipment === 'Dumbbells' ? ['Barbell', 'Cable Machine', 'EZ Bar', 'Kettlebell', 'Landmine'] : equipment === 'Barbell' ? ['Dumbbells', 'Dumbbell', 'Cable Machine', 'EZ Bar', 'Kettlebell', 'Landmine'] : [];
-  const targetCategories = goal === 'Improve fitness' || goal === 'Lose fat' ? ['Full Body', 'Legs', 'Back', 'Shoulders'] : goal === 'Build muscle' ? ['Chest', 'Back', 'Legs', 'Shoulders', 'Biceps', 'Triceps'] : ['Legs', 'Chest', 'Back', 'Shoulders'];
-  const difficultyRank = { Beginner: 1, Intermediate: 2, Advanced: 3 } as const;
-  const eligible = exercises.filter(exercise => !unavailable.includes(exercise.equipment) && difficultyRank[exercise.difficulty] <= difficultyRank[level as keyof typeof difficultyRank]);
-  const workoutDays = Array.from({ length: Math.min(5, Math.max(1, days)) }, (_, dayIndex) => { const category = targetCategories[dayIndex % targetCategories.length]; const preferred = eligible.filter(exercise => exercise.category === category || exercise.primaryMuscle === category); const chosen: typeof exercises = []; [...preferred, ...eligible].forEach(exercise => { if (chosen.length < 6 && !chosen.some(item => item.name === exercise.name)) chosen.push(exercise); }); for (let offset = 0; chosen.length < 6 && eligible.length > 0; offset += 1) { const fallback = eligible[(dayIndex * 6 + offset) % eligible.length]; if (!chosen.some(item => item.name === fallback.name)) chosen.push(fallback); } return { name: `Day ${dayIndex + 1} · ${category}`, exercises: chosen.slice(0, 6).map(exercise => createWorkoutExercise(exercise.name)) }; });
-  return { id: `tailored-${Date.now()}`, name: `${goal} · ${days} day plan · 60 min`, days: workoutDays };
+function buildTailoredProgram({ goal, level, days, equipment, sessionLength }: { goal: string; level: string; days: number; equipment: string; sessionLength: string }): Program {
+  const allowedEquipment: Record<string, string[]> = {
+    'Full gym': [...new Set(exercises.map(exercise => exercise.equipment))],
+    Dumbbells: ['Bodyweight', 'Dumbbells', 'Dumbbell'],
+    Barbell: ['Bodyweight', 'Barbell'],
+    Bodyweight: ['Bodyweight'],
+  };
+  const difficultyRank: Record<Difficulty, number> = { Beginner: 1, Intermediate: 2, Advanced: 3 };
+  const maxDifficulty = difficultyRank[level as Difficulty] ?? difficultyRank.Intermediate;
+  const eligible = exercises.filter(exercise => allowedEquipment[equipment]?.includes(exercise.equipment) && (level === 'Beginner' ? exercise.difficulty === 'Beginner' : difficultyRank[exercise.difficulty] <= maxDifficulty));
+  const exerciseCount = sessionLength === '30 minutes' ? 4 : sessionLength === '45 minutes' ? 5 : 6;
+  const dayTemplates = createDayTemplates(Math.min(5, Math.max(1, days)));
+  const coveredCategories = new Set<string>();
+  const usedExerciseIds = new Set<string>();
+  const workoutDays = Array.from({ length: Math.min(5, Math.max(1, days)) }, (_, dayIndex) => {
+    const template = dayTemplates[dayIndex];
+    const chosen: Exercise[] = [];
+    template.roles.forEach(role => {
+      const candidates = eligible.filter(exercise => template.categories.includes(exercise.category) && !chosen.some(item => item.id === exercise.id) && exerciseRole(exercise) === role);
+      const ranked = candidates.sort((left, right) => scoreExercise(right, goal, template.categories, coveredCategories, usedExerciseIds) - scoreExercise(left, goal, template.categories, coveredCategories, usedExerciseIds));
+      if (ranked[0] && chosen.length < exerciseCount) chosen.push(ranked[0]);
+    });
+    eligible.filter(exercise => template.categories.includes(exercise.category) && !chosen.some(item => item.id === exercise.id)).sort((left, right) => scoreExercise(right, goal, template.categories, coveredCategories, usedExerciseIds) - scoreExercise(left, goal, template.categories, coveredCategories, usedExerciseIds)).some(exercise => {
+      if (chosen.length >= exerciseCount) return true;
+      chosen.push(exercise);
+      return false;
+    });
+    chosen.forEach(exercise => { coveredCategories.add(exercise.category); usedExerciseIds.add(exercise.id); });
+    return { name: `Day ${dayIndex + 1} · ${template.name}`, exercises: chosen.slice(0, exerciseCount).map(exercise => prescribedExercise(exercise, level, goal)) };
+  });
+  return { id: `tailored-${Date.now()}`, name: `${goal} · ${days} day plan · ${sessionLength.replace(' minutes', ' min')}`, days: workoutDays };
+}
+
+function createDayTemplates(days: number) {
+  const fullBody = { name: 'Full Body', categories: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Calves', 'Glutes', 'Traps', 'Forearms', 'Core', 'Full Body'], roles: ['squat', 'hinge', 'push', 'pull', 'core', 'accessory'] };
+  const lower = { name: 'Lower Body', categories: ['Legs', 'Glutes', 'Calves', 'Core'], roles: ['squat', 'hinge', 'accessory', 'core', 'accessory'] };
+  const push = { name: 'Upper Push', categories: ['Chest', 'Shoulders', 'Triceps', 'Core'], roles: ['push', 'accessory', 'core', 'accessory'] };
+  const pull = { name: 'Upper Pull', categories: ['Back', 'Biceps', 'Traps', 'Forearms', 'Core'], roles: ['pull', 'accessory', 'core', 'accessory'] };
+  if (days === 1) return [fullBody];
+  if (days === 2) return [lower, { name: 'Upper Body', categories: [...push.categories, ...pull.categories], roles: ['push', 'pull', 'accessory', 'core', 'accessory'] }];
+  if (days === 3) return [lower, push, pull];
+  if (days === 4) return [lower, push, { ...lower, name: 'Lower Body B' }, pull];
+  return [lower, push, { ...lower, name: 'Lower Body B' }, pull, fullBody];
+}
+
+function exerciseRole(exercise: Exercise) {
+  if (['Squat', 'Single Leg Squat'].includes(exercise.movementPattern)) return 'squat';
+  if (['Hinge', 'Hip Extension'].includes(exercise.movementPattern)) return 'hinge';
+  if (['Horizontal Push', 'Incline Push', 'Decline Push', 'Vertical Push', 'Press', 'Squat to Press'].includes(exercise.movementPattern)) return 'push';
+  if (['Horizontal Pull', 'Vertical Pull', 'Olympic Pull'].includes(exercise.movementPattern)) return 'pull';
+  if (['Anti-Extension', 'Anti-Rotation', 'Spinal Flexion', 'Hip Flexion'].includes(exercise.movementPattern)) return 'core';
+  if (exercise.movementPattern === 'Loaded Carry') return 'carry';
+  return 'accessory';
+}
+
+function scoreExercise(exercise: Exercise, goal: string, categories: string[], coveredCategories: Set<string>, usedExerciseIds: Set<string>) {
+  const targetScore = categories.includes(exercise.category) ? 10 : 0;
+  const coverageScore = coveredCategories.has(exercise.category) ? 0 : 6;
+  const compoundScore = exercise.type === 'Compound' ? 3 : 0;
+  const fitnessScore = goal === 'Improve fitness' || goal === 'Lose fat' ? compoundScore * 2 : compoundScore;
+  const repeatPenalty = usedExerciseIds.has(exercise.id) ? 7 : 0;
+  return targetScore + coverageScore + fitnessScore - repeatPenalty;
+}
+
+function prescribedExercise(exercise: Exercise, level: string, goal: string) {
+  const setCount = level === 'Beginner' ? 2 : level === 'Intermediate' ? 3 : 4;
+  const reps = goal === 'Build strength' ? (level === 'Beginner' ? '8-10' : '5-8') : goal === 'Lose fat' ? '10-15' : '8-12';
+  return { ...createWorkoutExercise(exercise.name), sets: Array.from({ length: setCount }, () => ({ weight: '', reps })) };
 }
 
 function ProgramBuilder({ onBack }: { onBack: () => void }) {

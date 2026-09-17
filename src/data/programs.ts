@@ -27,7 +27,7 @@ export function normalizeProgram(value: unknown): Program | undefined {
         if (typeof exercise === 'string') return [createWorkoutExercise(exercise)];
         if (!exercise || typeof exercise !== 'object' || typeof exercise.name !== 'string') return [];
         const sets = Array.isArray(exercise.sets) ? exercise.sets.slice(0, setNumbers.length).map(set => ({ weight: typeof set?.weight === 'string' ? set.weight : '', reps: typeof set?.reps === 'string' ? set.reps : '' })) : emptySets();
-        return [{ name: exercise.name, sets: [...sets, ...emptySets().slice(sets.length)] }];
+        return [{ name: exercise.name, sets }];
       }) : [],
     })),
   };

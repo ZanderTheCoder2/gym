@@ -2,7 +2,7 @@
   "expo": {
     "name": "Forged Fitness",
     "slug": "gym",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "gym",
@@ -26,6 +26,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Forged Fitness to scan workout program QR codes",
+          "barcodeScannerEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {

@@ -4,17 +4,19 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 export default function AppTabs() {
   return (
     <Tabs>
-      <TabSlot style={styles.tabSlot} />
+      <View style={styles.tabSlot}>
+        <TabSlot style={styles.tabSlotContent} />
+      </View>
       <TabList asChild>
         <WebTabList>
           <TabTrigger name="index" href="/" asChild>
-            <TabButton accessibilityLabel="Home" icon={require('@/assets/images/tabIcons/home.png')} />
+            <TabButton accessibilityLabel="Home" label="Home" icon={require('@/assets/images/tabIcons/home.png')} />
           </TabTrigger>
           <TabTrigger name="workouts" href="/workouts" asChild>
-            <TabButton accessibilityLabel="Workouts" icon={require('@/assets/images/tabIcons/explore.png')} />
+            <TabButton accessibilityLabel="Workouts" label="Train" icon={require('@/assets/images/tabIcons/explore.png')} />
           </TabTrigger>
           <TabTrigger name="progress" href="/progress" asChild>
-            <TabButton accessibilityLabel="Programs" icon={require('@/assets/images/tabIcons/home.png')} />
+            <TabButton accessibilityLabel="Programs" label="Programs" icon={require('@/assets/images/tabIcons/home.png')} />
           </TabTrigger>
           <TabTrigger name="more" href="/more" asChild>
             <MoreButton accessibilityLabel="More" />
@@ -25,12 +27,12 @@ export default function AppTabs() {
   );
 }
 
-function TabButton({ icon, isFocused, ...props }: TabTriggerSlotProps & { icon: number }) {
-  return <Pressable {...props} style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}><Image source={icon} style={[styles.icon, isFocused && styles.iconFocused]} /></Pressable>;
+function TabButton({ icon, label, isFocused, ...props }: TabTriggerSlotProps & { icon: number; label: string }) {
+  return <Pressable {...props} accessibilityRole="button" style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}><Image source={icon} tintColor={isFocused ? '#E3B967' : '#F4F2EA'} style={[styles.icon, isFocused && styles.iconFocused]} /><Text style={[styles.tabLabel, isFocused && styles.tabLabelFocused]}>{label}</Text></Pressable>;
 }
 
 function MoreButton({ isFocused, ...props }: TabTriggerSlotProps) {
-  return <Pressable {...props} accessibilityRole="button" style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}><Text style={[styles.moreText, isFocused && styles.iconFocused]}>•••</Text></Pressable>;
+  return <Pressable {...props} accessibilityRole="button" style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}><Text style={[styles.moreText, isFocused && styles.moreTextFocused]}>•••</Text><Text style={[styles.tabLabel, isFocused && styles.tabLabelFocused]}>More</Text></Pressable>;
 }
 
 function WebTabList(props: TabListProps) {
@@ -38,11 +40,15 @@ function WebTabList(props: TabListProps) {
 }
 
 const styles = StyleSheet.create({
-  tabSlot: { backgroundColor: '#0B0B0B', flex: 1 },
-  tabList: { alignItems: 'center', alignSelf: 'center', backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 28, borderWidth: 1, bottom: 18, flexDirection: 'row', gap: 8, height: 52, justifyContent: 'center', paddingHorizontal: 4, position: 'absolute', shadowColor: '#000000', shadowOffset: { height: 4, width: 0 }, shadowOpacity: 0.12, shadowRadius: 12, width: 204, zIndex: 20 },
-  tabButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 44 },
+  tabSlot: { flex: 1, minHeight: 0 },
+  tabSlotContent: { backgroundColor: '#111411', flex: 1 },
+  tabList: { alignItems: 'center', alignSelf: 'center', backgroundColor: '#1A1F1B', borderColor: '#343C35', borderRadius: 20, borderWidth: 1, boxShadow: '0px 4px 14px rgba(0, 0, 0, 0.2)', flexDirection: 'row', gap: 3, height: 66, justifyContent: 'center', marginBottom: 18, maxWidth: 380, paddingHorizontal: 7, width: '92%', zIndex: 20 },
+  tabButton: { alignItems: 'center', flex: 1, height: 56, justifyContent: 'center', minWidth: 0 },
   pressed: { opacity: 0.7 },
-  icon: { height: 21, opacity: 0.55, tintColor: '#FFFFFF', width: 21 },
-  iconFocused: { opacity: 1, tintColor: '#D4AF37' },
-  moreText: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', letterSpacing: 2, opacity: 0.55 },
+  icon: { height: 20, opacity: 0.55, width: 20 },
+  iconFocused: { opacity: 1 },
+  tabLabel: { color: '#A7AFA5', fontSize: 9, fontWeight: '800', marginTop: 3 },
+  tabLabelFocused: { color: '#E3B967' },
+  moreText: { color: '#F4F2EA', fontSize: 16, fontWeight: '900', letterSpacing: 2, opacity: 0.55 },
+  moreTextFocused: { color: '#E3B967', opacity: 1 },
 });

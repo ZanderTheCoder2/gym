@@ -2,9 +2,21 @@ import { BottomTabInset, MaxContentWidth } from '@/constants/theme';
 import { exercises, type Difficulty, type Exercise } from '@/data/exercises';
 import { createWorkoutExercise, normalizeProgram, programsStorageKey, setNumbers, type Program, type SetEntry } from '@/data/programs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context';
+
+const polished = StyleSheet.create({
+  screen: { backgroundColor: '#111411' },
+  choiceCard: { backgroundColor: '#1A1F1B', borderColor: '#E3B967', borderRadius: 12 },
+  choiceCardAlt: { backgroundColor: '#1A1F1B', borderColor: '#343C35', borderRadius: 12 },
+  choiceKicker: { color: '#E3B967' },
+  choiceTitle: { color: '#F4F2EA' },
+  choiceCopy: { color: '#A7AFA5' },
+  choiceAction: { color: '#E3B967', fontWeight: '900' as const },
+});
+
+const SafeAreaView = ({ style, ...props }: ComponentProps<typeof BaseSafeAreaView>) => <BaseSafeAreaView {...props} style={[style, { flex: 1 }]} />;
 
 export default function WorkoutsScreen() {
   const [mode, setMode] = useState<'chooser' | 'builder' | 'tailored'>('chooser');
@@ -15,7 +27,23 @@ export default function WorkoutsScreen() {
 }
 
 function ProgramChoice({ onTailored, onManual }: { onTailored: () => void; onManual: () => void }) {
-  return <View style={[styles.container, { backgroundColor: '#000000' }]}><SafeAreaView style={[styles.safeArea, { backgroundColor: '#000000' }]}><ScrollView contentContainerStyle={styles.content}><Text style={[styles.eyebrow, { color: '#FFFFFF' }]}>FORGED FITNESS / WORKOUTS</Text><Text style={[styles.title, { color: '#FFFFFF' }]}>Build your next week.</Text><Text style={[styles.subtitle, { color: '#B8B8B8' }]}>Choose how much help you want. Your saved programs will appear on Home.</Text><Pressable onPress={onTailored} style={[styles.optionCard, { backgroundColor: '#171717', borderColor: '#FFFFFF' }]}><Text style={[styles.optionKicker, { color: '#FFFFFF' }]}>OPTION ONE</Text><Text style={[styles.optionTitle, { color: '#FFFFFF' }]}>Create me a tailored workout</Text><Text style={[styles.optionText, { color: '#B8B8B8' }]}>Answer a few questions and get a plan matched to your goal, experience, days, equipment, and time.</Text><Text style={[styles.optionText, { color: '#FFFFFF', fontWeight: '900', marginTop: 14 }]}>START SETUP  →</Text></Pressable><Pressable onPress={onManual} style={[styles.optionCardLight, { backgroundColor: '#090909', borderColor: '#4A4A4A' }]}><Text style={[styles.optionKicker, { color: '#FFFFFF' }]}>OPTION TWO</Text><Text style={[styles.optionTitle, { color: '#FFFFFF' }]}>Create your program</Text><Text style={[styles.optionText, { color: '#B8B8B8' }]}>Build each training day yourself, choose exercises, and enter your sets and reps.</Text><Text style={[styles.optionText, { color: '#FFFFFF', fontWeight: '900', marginTop: 14 }]}>BUILD MANUALLY  →</Text></Pressable></ScrollView></SafeAreaView></View>;
+  return <View style={[styles.container, polished.screen]}><SafeAreaView style={[styles.safeArea, polished.screen]}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <Text style={styles.eyebrow}>FORGED / WORKOUT PLANS</Text>
+    <Text style={styles.title}>Build your next week.</Text>
+    <Text style={styles.subtitle}>Start with a guided plan or build every session your way.</Text>
+    <Pressable accessibilityRole="button" onPress={onTailored} style={[styles.optionCard, polished.choiceCard]}>
+      <Text style={[styles.optionKicker, polished.choiceKicker]}>GUIDED SETUP</Text>
+      <Text style={[styles.optionTitle, polished.choiceTitle]}>Create a tailored plan</Text>
+      <Text style={[styles.optionText, polished.choiceCopy]}>Choose your goal, experience, schedule, equipment, and session length.</Text>
+      <Text style={[styles.optionText, polished.choiceAction, { marginTop: 16 }]}>START SETUP  →</Text>
+    </Pressable>
+    <Pressable accessibilityRole="button" onPress={onManual} style={[styles.optionCardLight, polished.choiceCardAlt]}>
+      <Text style={[styles.optionKicker, polished.choiceKicker]}>MANUAL BUILDER</Text>
+      <Text style={[styles.optionTitle, polished.choiceTitle]}>Build your own plan</Text>
+      <Text style={[styles.optionText, polished.choiceCopy]}>Set up training days, choose movements, and tune every set.</Text>
+      <Text style={[styles.optionText, polished.choiceAction, { marginTop: 16 }]}>BUILD MANUALLY  →</Text>
+    </Pressable>
+  </ScrollView></SafeAreaView></View>;
 }
 
 function TailoredBuilder({ onBack }: { onBack: () => void }) {
@@ -35,24 +63,8 @@ function TailoredBuilder({ onBack }: { onBack: () => void }) {
   const choose = (value: string) => setAnswers(current => ({ ...current, [currentStep.key]: value }));
   const next = () => { if (step < steps.length - 1) setStep(current => current + 1); else { setGenerated(buildTailoredProgram({ ...answers, days: Number(answers.days) })); setSaved(false); } };
   const save = async () => { if (!generated) return; const stored = await AsyncStorage.getItem(programsStorageKey); const existing = stored ? JSON.parse(stored) : []; await AsyncStorage.setItem(programsStorageKey, JSON.stringify([...existing.filter((item: Program) => item.id !== generated.id), generated])); setSaved(true); };
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable onPress={() => step === 0 ? onBack() : setStep(current => current - 1)} style={styles.backButton}><Text style={styles.backText}>{step === 0 ? 'BACK TO OPTIONS' : 'BACK'}</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / SETUP {step + 1} OF {steps.length}</Text><View style={{ backgroundColor: '#3A3A3A', borderRadius: 4, height: 6, marginTop: 18, overflow: 'hidden' }}><View style={{ backgroundColor: '#D4AF37', borderRadius: 4, height: 6, width: `${((step + 1) / steps.length) * 100}%` }} /></View><Text style={styles.title}>{currentStep.label}</Text><Text style={styles.subtitle}>{currentStep.description}</Text><View style={{ marginTop: 18 }}>{currentStep.options.map(option => <Pressable key={option} onPress={() => choose(option)} style={option === currentValue ? styles.optionCard : styles.optionCardLight}><Text style={styles.optionTitle}>{option}</Text>{option === currentValue && <Text style={styles.optionText}>Selected</Text>}</Pressable>)}</View><Pressable onPress={next} style={styles.generateButton}><Text style={styles.saveText}>{step === steps.length - 1 ? 'GENERATE MY WORKOUT' : 'CONTINUE'}</Text></Pressable>{generated && <View style={styles.generatedCard}><Text style={styles.optionKicker}>RECOMMENDED PROGRAM</Text><Text style={styles.optionTitle}>{generated.name}</Text>{generated.days.map(day => <View key={day.name} style={styles.generatedDay}><Text style={styles.dayName}>{day.name}</Text><Text style={styles.dayExercises}>{day.exercises.map(exercise => exercise.name).join(' · ')}</Text></View>)}<Pressable onPress={save} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED TO HOME' : 'SAVE PROGRAM'}</Text></Pressable></View>}</ScrollView></SafeAreaView></View>;
+  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable accessibilityRole="button" onPress={() => step === 0 ? onBack() : setStep(current => current - 1)} style={styles.backButton}><Text style={styles.backText}>{step === 0 ? 'BACK TO OPTIONS' : 'BACK'}</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / SETUP {step + 1} OF {steps.length}</Text><View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: steps.length, now: step + 1 }} style={{ backgroundColor: '#3A3A3A', borderRadius: 4, height: 6, marginTop: 18, overflow: 'hidden' }}><View style={{ backgroundColor: '#D4AF37', borderRadius: 4, height: 6, width: `${((step + 1) / steps.length) * 100}%` }} /></View><Text style={styles.title}>{currentStep.label}</Text><Text style={styles.subtitle}>{currentStep.description}</Text><View style={{ marginTop: 18 }}>{currentStep.options.map(option => <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: option === currentValue }} onPress={() => choose(option)} style={option === currentValue ? styles.optionCard : styles.optionCardLight}><Text style={styles.optionTitle}>{option}</Text>{option === currentValue && <Text style={styles.optionText}>Selected</Text>}</Pressable>)}</View><Pressable accessibilityRole="button" onPress={next} style={styles.generateButton}><Text style={styles.saveText}>{step === steps.length - 1 ? 'GENERATE MY WORKOUT' : 'CONTINUE'}</Text></Pressable>{generated && <View style={styles.generatedCard}><Text style={styles.optionKicker}>RECOMMENDED PROGRAM</Text><Text style={styles.optionTitle}>{generated.name}</Text>{generated.days.map(day => <View key={day.name} style={styles.generatedDay}><Text style={styles.dayName}>{day.name}</Text><Text style={styles.dayExercises}>{day.exercises.map(exercise => exercise.name).join(' · ')}</Text></View>)}<Pressable accessibilityRole="button" onPress={save} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED TO HOME' : 'SAVE PROGRAM'}</Text></Pressable></View>}</ScrollView></SafeAreaView></View>;
 }
-
-function TailoredBuilderLegacy({ onBack }: { onBack: () => void }) {
-  const [goal, setGoal] = useState('Build strength');
-  const [level, setLevel] = useState('Intermediate');
-  const [days, setDays] = useState('3');
-  const [equipment, setEquipment] = useState('Full gym');
-  const [sessionLength, setSessionLength] = useState('60 minutes');
-  const [generated, setGenerated] = useState<Program | null>(null);
-  const [saved, setSaved] = useState(false);
-  const cycle = (value: string, values: string[], setter: (next: string) => void) => setter(values[(values.indexOf(value) + 1) % values.length]);
-  const generate = () => { setGenerated(buildTailoredProgram({ goal, level, days: Number(days), equipment, sessionLength })); setSaved(false); };
-  const save = async () => { if (!generated) return; const stored = await AsyncStorage.getItem(programsStorageKey); const existing = stored ? JSON.parse(stored) : []; await AsyncStorage.setItem(programsStorageKey, JSON.stringify([...existing.filter((item: Program) => item.id !== generated.id), generated])); setSaved(true); };
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO OPTIONS</Text></Pressable><Text style={styles.eyebrow}>FORGED FITNESS / TAILORED PLAN</Text><Text style={styles.title}>Tell us how you train.</Text><Text style={styles.subtitle}>Your level, equipment, goal, days, and session length all shape the plan.</Text><Question label="Goal" value={goal} onPress={() => cycle(goal, ['Build strength', 'Build muscle', 'Improve fitness', 'Lose fat'], setGoal)} /><Question label="Experience" value={level} onPress={() => cycle(level, ['Beginner', 'Intermediate', 'Advanced'], setLevel)} /><Question label="Days per week" value={days} onPress={() => cycle(days, ['1', '2', '3', '4', '5'], setDays)} /><Question label="Equipment" value={equipment} onPress={() => cycle(equipment, ['Full gym', 'Dumbbells', 'Barbell', 'Bodyweight'], setEquipment)} /><Question label="Session length" value={sessionLength} onPress={() => cycle(sessionLength, ['30 minutes', '45 minutes', '60 minutes'], setSessionLength)} /><Pressable onPress={generate} style={styles.generateButton}><Text style={styles.saveText}>GENERATE WORKOUT</Text></Pressable>{generated && <View style={styles.generatedCard}><Text style={styles.optionKicker}>RECOMMENDED PROGRAM</Text><Text style={styles.optionTitle}>{generated.name}</Text>{generated.days.map(day => <View key={day.name} style={styles.generatedDay}><Text style={styles.dayName}>{day.name}</Text><Text style={styles.dayExercises}>{day.exercises.map(exercise => exercise.name).join(' · ')}</Text></View>)}<Pressable onPress={save} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED TO HOME' : 'SAVE PROGRAM'}</Text></Pressable></View>}</ScrollView></SafeAreaView></View>;
-}
-
-function Question({ label, value, onPress }: { label: string; value: string; onPress: () => void }) { return <Pressable onPress={onPress} style={styles.question}><Text style={styles.questionLabel}>{label}</Text><Text style={styles.questionValue}>{value}  ›</Text></Pressable>; }
 
 function buildTailoredProgram({ goal, level, days, equipment, sessionLength }: { goal: string; level: string; days: number; equipment: string; sessionLength: string }): Program {
   const allowedEquipment: Record<string, string[]> = {
@@ -133,7 +145,7 @@ function ProgramBuilder({ onBack }: { onBack: () => void }) {
   useEffect(() => { AsyncStorage.getItem(programsStorageKey).then(value => { if (value) setPrograms(JSON.parse(value).flatMap((item: unknown) => { const normalized = normalizeProgram(item); return normalized ? [normalized] : []; })); }).catch(() => undefined).finally(() => setLoaded(true)); }, []);
   useEffect(() => { if (loaded) AsyncStorage.setItem(programsStorageKey, JSON.stringify(programs)).catch(() => undefined); }, [programs, loaded]);
   const currentDay = program.days[selectedDay] ?? program.days[0];
-  const filteredExercises = useMemo(() => exercises.filter(exercise => exercise.name.toLowerCase().includes(query.toLowerCase())), [query]);
+  const filteredExercises = useMemo(() => exercises.filter(exercise => exercise.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 12), [query]);
   const updateDay = (update: (day: Program['days'][number]) => Program['days'][number]) => setProgram(current => ({ ...current, days: current.days.map((day, index) => index === selectedDay ? update(day) : day) }));
   const addExercise = (name: string) => updateDay(day => day.exercises.some(exercise => exercise.name === name) ? day : { ...day, exercises: [...day.exercises, createWorkoutExercise(name)] });
   const saveProgram = () => { if (!program.name.trim()) { Alert.alert('Name your program', 'Add a name before saving.'); return; } const saved = { ...program, id: program.id || `program-${Date.now()}`, name: program.name.trim() }; setPrograms(current => [...current.filter(item => item.id !== saved.id), saved]); setProgram(saved); Alert.alert('Saved locally', 'Your program is ready on Home.'); };

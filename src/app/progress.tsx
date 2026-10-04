@@ -1,9 +1,9 @@
-import { BottomTabInset, MaxContentWidth } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Palette } from '@/constants/theme';
 import { exercises, type Exercise } from '@/data/exercises';
 import { createWorkoutExercise, normalizeProgram, programsStorageKey, type Program, type SetEntry, type WorkoutDay, type WorkoutExercise } from '@/data/programs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -11,6 +11,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ProgramsScreen() {
+  const router = useRouter();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
@@ -87,20 +88,20 @@ export default function ProgramsScreen() {
     }
   };
 
-  if (scanMode) return <View style={styles.scannerScreen}><CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handleScan} /><View style={styles.scannerOverlay}><Text style={styles.scannerTitle}>Scan a program</Text><Text style={styles.scannerCopy}>Point the camera at a Forged Fitness QR code.</Text><Pressable onPress={() => setScanMode(false)} style={styles.scannerClose}><Text style={styles.scannerCloseText}>CANCEL</Text></Pressable></View></View>;
+  if (scanMode) return <View style={[styles.scannerScreen, polished.screen]}><CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handleScan} /><View style={styles.scannerOverlay}><Text style={styles.scannerTitle}>Scan a program</Text><Text style={styles.scannerCopy}>Point the camera at a Forged Fitness QR code.</Text><Pressable onPress={() => setScanMode(false)} style={styles.scannerClose}><Text style={styles.scannerCloseText}>CANCEL</Text></Pressable></View></View>;
 
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    {!editingProgramId && <><Text style={styles.eyebrow}>SLATER GYM / PROGRAM EDITOR</Text><Text style={styles.title}>Shape your plan.</Text><Text style={styles.subtitle}>Swap movements, tune your sets, and keep every program ready for the next session.</Text>{programs.length > 0 && <Pressable onPress={openScanner} style={styles.scanButton}><Text style={styles.scanButtonText}>SCAN A PROGRAM</Text></Pressable>}</>}
-    {!programs.length ? <View style={styles.empty}><Text style={styles.emptyTitle}>No saved programs</Text><Text style={styles.emptyText}>Create a tailored or manual plan in Workouts and edit it here.</Text></View> : !editingProgramId ? <ProgramChooser programs={programs} onSelect={program => { setSelectedProgramId(program.id); setSelectedDayIndex(null); setSwapTarget(null); setEditingProgramId(program.id); }} /> : <>
+  return <View style={[styles.container, polished.screen]}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    {!editingProgramId && <><Text style={styles.eyebrow}>FORGED / PROGRAM LIBRARY</Text><Text style={styles.title}>Shape your plan.</Text><Text style={styles.subtitle}>Fine-tune each day, swap movements, and keep every session ready.</Text>{programs.length > 0 && <Pressable accessibilityRole="button" onPress={openScanner} style={styles.scanButton}><Text style={styles.scanButtonText}>SCAN A PROGRAM</Text></Pressable>}</>}
+    {!programs.length ? <View style={[styles.empty, polished.panel]}><Text style={styles.emptyTitle}>Your program library starts here.</Text><Text style={styles.emptyText}>Create a tailored or manual plan in Workouts. You can edit and share it from here.</Text><Pressable accessibilityRole="button" onPress={() => router.push('/workouts')} style={styles.scanButton}><Text style={styles.scanButtonText}>BUILD YOUR FIRST PROGRAM</Text></Pressable></View> : !editingProgramId ? <ProgramChooser programs={programs} onSelect={program => { setSelectedProgramId(program.id); setSelectedDayIndex(null); setSwapTarget(null); setEditingProgramId(program.id); }} /> : <>
       <Pressable onPress={() => { if (selectedDayIndex === null) { setEditingProgramId(null); } else { setSelectedDayIndex(null); } setSwapTarget(null); }} style={styles.backButton}><Text style={styles.backText}>{selectedDayIndex === null ? 'BACK TO PROGRAMS' : 'BACK TO DAYS'}</Text></Pressable>
       {selectedProgram && <View style={styles.editorHeader}><TextInput value={selectedProgram.name} onChangeText={name => updateProgram(program => ({ ...program, name }))} style={styles.programNameInput} /><Pressable onPress={() => setShareProgramId(selectedProgram.id)} style={styles.shareButton}><Text style={styles.shareButtonText}>SHARE</Text></Pressable><Pressable onPress={savePrograms} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED' : 'SAVE'}</Text></Pressable><Pressable onPress={() => deleteProgram(selectedProgram)} style={styles.deleteSmall}><Text style={styles.deleteSmallText}>DELETE</Text></Pressable></View>}
       {selectedProgram && selectedDayIndex === null && <DayChooser program={selectedProgram} onSelect={index => setSelectedDayIndex(index)} />}
       {selectedProgram && selectedDayIndex !== null && selectedDay && <>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabs}>{selectedProgram.days.map((day, index) => <Pressable key={`${day.name}-${index}`} onPress={() => { setSelectedDayIndex(index); setSwapTarget(null); }} style={[styles.dayTab, selectedDayIndex === index && styles.dayTabActive]}><Text style={[styles.dayTabText, selectedDayIndex === index && styles.dayTabTextActive]}>{day.name}</Text></Pressable>)}<Pressable onPress={() => { updateProgram(program => ({ ...program, days: [...program.days, { name: `Day ${program.days.length + 1}`, exercises: [] }] })); setSelectedDayIndex(selectedProgram.days.length); }} style={styles.addDay}><Text style={styles.addDayText}>+ DAY</Text></Pressable></ScrollView>
-        <View style={styles.dayEditor}><TextInput value={selectedDay.name} onChangeText={name => updateDay(() => ({ ...selectedDay, name }))} style={styles.dayNameInput} /><Text style={styles.muted}>{selectedDay.exercises.length} exercises</Text></View>
+        <View style={[styles.dayEditor, polished.panel]}><TextInput value={selectedDay.name} onChangeText={name => updateDay(() => ({ ...selectedDay, name }))} style={styles.dayNameInput} /><Text style={styles.muted}>{selectedDay.exercises.length} exercises</Text></View>
         {selectedDay.exercises.map(exercise => <ExerciseEditor key={exercise.name} exercise={exercise} swapTarget={swapTarget} onSetSwapTarget={setSwapTarget} onRemove={() => removeExercise(exercise.name)} onUpdateSet={updateSet} onAddSet={() => addSet(exercise.name)} onRemoveSet={index => removeSet(exercise.name, index)} />)}
         <Text style={styles.sectionTitle}>Add or swap exercises</Text><TextInput value={query} onChangeText={setQuery} placeholder="Search exercise library" placeholderTextColor="#8E8E8E" style={styles.search} />
-        {filteredExercises.map(exercise => <View key={exercise.id} style={styles.libraryRow}><View style={styles.libraryCopy}><Text style={styles.libraryName}>{exercise.name}</Text><Text style={styles.libraryMeta}>{exercise.category} - {exercise.equipment}</Text></View><Pressable onPress={() => swapTarget ? swapExercise(swapTarget, exercise) : addExercise(exercise.name)} style={styles.libraryAction}><Text style={styles.libraryActionText}>{swapTarget ? 'SWAP' : 'ADD'}</Text></Pressable></View>)}
+        {filteredExercises.map(exercise => <View key={exercise.id} style={[styles.libraryRow, polished.libraryRow]}><View style={styles.libraryCopy}><Text style={styles.libraryName}>{exercise.name}</Text><Text style={styles.libraryMeta}>{exercise.category} - {exercise.equipment}</Text></View><Pressable accessibilityRole="button" onPress={() => swapTarget ? swapExercise(swapTarget, exercise) : addExercise(exercise.name)} style={styles.libraryAction}><Text style={styles.libraryActionText}>{swapTarget ? 'SWAP' : 'ADD'}</Text></Pressable></View>)}
       </>}
     </>}
     {programToShare && <View style={styles.shareCard}><Text style={styles.shareTitle}>Share {programToShare.name}</Text><Text style={styles.shareCopy}>Have someone scan this code from their Forged Fitness app.</Text><View style={styles.qrFrame}><QRCode value={shareValue} size={220} color="#000000" backgroundColor="#FFFFFF" /></View><Pressable onPress={() => setShareProgramId(null)} style={styles.closeShare}><Text style={styles.closeShareText}>CLOSE</Text></Pressable></View>}
@@ -120,7 +121,7 @@ function ExerciseEditor({ exercise, swapTarget, onSetSwapTarget, onRemove, onUpd
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#0B0B0B', flex: 1 }, safeArea: { alignSelf: 'center', maxWidth: MaxContentWidth, paddingBottom: BottomTabInset, width: '100%' }, content: { padding: 20, paddingBottom: 100 },
+  container: { backgroundColor: '#0B0B0B', flex: 1 }, safeArea: { alignSelf: 'center', flex: 1, maxWidth: MaxContentWidth, paddingBottom: BottomTabInset, width: '100%' }, content: { padding: 20, paddingBottom: 100 },
   eyebrow: { color: '#D4AF37', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, title: { color: '#FFFFFF', fontSize: 30, fontWeight: '900', marginTop: 18 }, subtitle: { color: '#B8B8B8', fontSize: 14, lineHeight: 21, marginTop: 6 },
   stats: { flexDirection: 'row', gap: 8, marginTop: 24 }, stat: { backgroundColor: '#2A2412', borderRadius: 10, flex: 1, padding: 13 }, statValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '900' }, statLabel: { color: '#D4AF37', fontSize: 10, fontWeight: '800', marginTop: 3 },
   sectionTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '900', marginBottom: 12, marginTop: 28 }, programTabs: { gap: 8, paddingBottom: 4 }, programTab: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, maxWidth: 220, paddingHorizontal: 14, paddingVertical: 11 }, programTabActive: { backgroundColor: '#D4AF37', borderColor: '#D4AF37' }, programTabText: { color: '#CFCFCF', fontSize: 11, fontWeight: '900' }, programTabTextActive: { color: '#000000' },
@@ -136,4 +137,10 @@ const styles = StyleSheet.create({
   editSetRow: { alignItems: 'center', borderTopColor: '#3A3A3A', borderTopWidth: 1, flexDirection: 'row', gap: 7, paddingVertical: 8 }, editSetNumber: { color: '#D4AF37', fontSize: 11, fontWeight: '900', textAlign: 'center', width: 22 }, editInput: { backgroundColor: '#0B0B0B', borderColor: '#3A3A3A', borderRadius: 6, borderWidth: 1, color: '#FFFFFF', flex: 1, paddingHorizontal: 8, paddingVertical: 9, textAlign: 'center' }, removeSet: { alignItems: 'center', height: 30, justifyContent: 'center', width: 24 }, removeSetText: { color: '#B8B8B8', fontSize: 12, fontWeight: '900' }, addSet: { alignItems: 'center', borderColor: '#D4AF37', borderRadius: 6, borderWidth: 1, marginTop: 8, paddingVertical: 9 }, addSetText: { color: '#D4AF37', fontSize: 10, fontWeight: '900' },
   search: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, color: '#FFFFFF', marginBottom: 9, padding: 12 }, libraryRow: { alignItems: 'center', backgroundColor: '#171717', borderBottomColor: '#3A3A3A', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 12 }, libraryCopy: { flex: 1 }, libraryName: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' }, libraryMeta: { color: '#B8B8B8', fontSize: 10, marginTop: 3 }, libraryAction: { borderColor: '#D4AF37', borderRadius: 6, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 7 }, libraryActionText: { color: '#D4AF37', fontSize: 9, fontWeight: '900' },
   empty: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 10, borderWidth: 1, marginTop: 24, padding: 16 }, emptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' }, emptyText: { color: '#B8B8B8', fontSize: 13, lineHeight: 19, marginTop: 5 },
+});
+
+const polished = StyleSheet.create({
+  screen: { backgroundColor: Palette.background },
+  panel: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 10 },
+  libraryRow: { backgroundColor: Palette.surface, borderBottomColor: Palette.border },
 });

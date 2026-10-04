@@ -1,7 +1,8 @@
-import { BottomTabInset, MaxContentWidth } from '@/constants/theme';
-import { normalizeProgram, programsStorageKey, type Program, type WorkoutExercise } from '@/data/programs';
+import { BottomTabInset, MaxContentWidth, Palette } from '@/constants/theme';
+import { getProgramDayIndexForWeekday, normalizeProgram, programsStorageKey, type Program, type WorkoutExercise } from '@/data/programs';
+import { normalizeTrainingSessions, localDateKey as sessionDateKey, trainingSessionsStorageKey, type CompletedSet, type TrainingSession } from '@/data/training-history';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +12,7 @@ const workoutHistoryStorageKey = '@gym/workout-history';
 type PreviousSet = { weight: string; reps: string };
 
 export default function GymHomeScreen() {
+  const router = useRouter();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
@@ -35,6 +37,8 @@ export default function GymHomeScreen() {
   const totalDays = programs.reduce((count, program) => count + program.days.length, 0);
   const totalExercises = programs.reduce((count, program) => count + program.days.reduce((dayCount, day) => dayCount + day.exercises.length, 0), 0);
   const activeProgram = programs.find(program => program.id === activeProgramId);
+  const todayIndex = (new Date().getDay() + 6) % 7;
+  const todayProgramDayIndex = primaryDayIndex(programs[0], todayIndex);
   const updateProgram = (updatedProgram: Program) => setPrograms(current => current.map(program => program.id === updatedProgram.id ? updatedProgram : program));
   const markTrainingDay = () => { const today = localDateKey(new Date()); setTrainingDates(current => ({ ...current, [today]: current[today] ?? 0 })); };
   const saveTrainingDuration = (seconds: number) => { const today = localDateKey(new Date()); setTrainingDates(current => { const history = current && typeof current === 'object' && !Array.isArray(current) ? current : {}; return { ...history, [today]: Math.max(history[today] ?? 0, seconds) }; }); };
@@ -43,18 +47,21 @@ export default function GymHomeScreen() {
 
   const primaryProgram = programs[0];
   return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    <View style={styles.topline}><Text style={styles.eyebrow}>SLATER GYM / TRAINING</Text><View style={styles.statusDot} /></View>
-    <Text style={styles.title}>Your training calendar.</Text>
-    <Text style={styles.subtitle}>See the work ahead, then start today's session in one tap.</Text>
+    <View style={styles.topline}><Text style={styles.eyebrow}>FORGED / TRAINING JOURNAL</Text><View style={styles.statusDot} /></View>
+    <Text style={styles.title}>Make today count.</Text>
+    <Text style={styles.subtitle}>Your plan, your progress, and the next session in one place.</Text>
 
     {primaryProgram ? <>
-      <TodayWorkout program={primaryProgram} onOpen={dayIndex => { setActiveDayIndex(dayIndex); setActiveProgramId(primaryProgram.id); }} />
+      <TodayWorkout program={primaryProgram} dayIndex={todayProgramDayIndex} onOpen={dayIndex => { setActiveDayIndex(dayIndex); setActiveProgramId(primaryProgram.id); }} />
+      <View style={styles.statsRow}><Stat value={String(programs.length)} label="PROGRAMS" /><Stat value={String(totalDays)} label="TRAINING DAYS" /><Stat value={String(totalExercises)} label="EXERCISES" /></View>
       <FourWeekCalendar program={primaryProgram} trainingDates={trainingDates} onOpen={dayIndex => { setActiveDayIndex(dayIndex); setActiveProgramId(primaryProgram.id); }} />
-    </> : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Build your first week</Text><Text style={styles.emptyCopy}>Create a tailored or manual program in Workouts. Your four-week calendar will appear here as soon as you save it.</Text></View>}
-
-    <View style={styles.statsRow}><Stat value={String(programs.length)} label="programs" /><Stat value={String(totalDays)} label="training days" /><Stat value={String(totalExercises)} label="exercises" /></View>
+    </> : <View style={styles.emptyCard}><Text style={styles.emptyEyebrow}>YOUR NEXT CHAPTER</Text><Text style={styles.emptyTitle}>Start with a plan.</Text><Text style={styles.emptyCopy}>Build a week around your schedule, equipment, and goals. Your calendar will take it from there.</Text><Pressable accessibilityRole="button" onPress={() => router.push('/workouts')} style={styles.emptyButton}><Text style={styles.emptyButtonText}>BUILD A PROGRAM</Text><Text style={styles.emptyButtonArrow}>→</Text></Pressable></View>}
 
   </ScrollView></SafeAreaView></View>;
+}
+
+function primaryDayIndex(program: Program | undefined, weekdayIndex: number) {
+  return program ? getProgramDayIndexForWeekday(program.days.length, weekdayIndex) : undefined;
 }
 
 function Stat({ value, label }: { value: string; label: string }) { return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
@@ -62,23 +69,22 @@ function Stat({ value, label }: { value: string; label: string }) { return <View
 const weekLabels = ['WEEK ONE', 'WEEK TWO', 'WEEK THREE', 'WEEK FOUR'];
 const weekdayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
-function TodayWorkout({ program, onOpen }: { program: Program; onOpen: (dayIndex: number) => void }) {
+function TodayWorkout({ program, dayIndex, onOpen }: { program: Program; dayIndex: number | undefined; onOpen: (dayIndex: number) => void }) {
   const today = new Date();
-  const todayIndex = (today.getDay() + 6) % 7;
-  const workout = program.days[todayIndex];
+  const workout = dayIndex === undefined ? undefined : program.days[dayIndex];
   const isRestDay = !workout;
   return <View style={styles.todayCard}>
-    <View style={styles.todayHeader}><View><Text style={styles.todayKicker}>TODAY'S WORKOUT</Text><Text style={styles.todayDate}>{today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Text></View><View style={styles.todayBadge}><Text style={styles.todayBadgeText}>{isRestDay ? 'REST' : 'TODAY'}</Text></View></View>
+    <View style={styles.todayHeader}><View><Text style={styles.todayKicker}>{isRestDay ? 'RECOVERY DAY' : "TODAY'S SESSION"}</Text><Text style={styles.todayDate}>{today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Text></View><View style={styles.todayBadge}><Text style={styles.todayBadgeText}>{isRestDay ? 'REST' : 'UP NEXT'}</Text></View></View>
     <Text style={styles.todayTitle}>{workout?.name ?? 'Recovery day'}</Text>
-    <Text style={styles.todayCopy}>{isRestDay ? 'Recover today. Your next training day is already mapped below.' : `${workout.exercises.length} exercises planned. Show up, log your sets, and keep moving.`}</Text>
-    {!isRestDay && <Pressable accessibilityLabel={`Start today's ${workout.name} workout`} onPress={() => onOpen(todayIndex)} style={styles.todayButton}><Text style={styles.todayButtonText}>START TODAY'S WORKOUT</Text></Pressable>}
+    <Text style={styles.todayCopy}>{isRestDay ? 'Take the recovery. Your next training day is mapped in the schedule below.' : `${workout.exercises.length} exercises planned. Log your sets and keep your progress moving.`}</Text>
+    {!isRestDay && dayIndex !== undefined && <Pressable accessibilityRole="button" accessibilityLabel={`Start today's ${workout.name} workout`} onPress={() => onOpen(dayIndex)} style={styles.todayButton}><Text style={styles.todayButtonText}>START SESSION</Text><Text style={styles.todayButtonArrow}>→</Text></Pressable>}
   </View>;
 }
 
 function FourWeekCalendar({ program, trainingDates, onOpen }: { program: Program; trainingDates: Record<string, number>; onOpen: (dayIndex: number) => void }) {
   const today = new Date();
   const monday = startOfWeek(today);
-  return <View style={styles.calendarSection}><View style={styles.calendarHeading}><View><Text style={styles.sectionTitle}>Four-week plan</Text><Text style={styles.calendarSubheading}>Your weekly schedule, mapped from today</Text></View><Text style={styles.calendarLegend}>GOLD = TODAY</Text></View>{weekLabels.map((label, weekIndex) => <View key={label} style={styles.weekCard}><View style={styles.weekHeader}><Text style={styles.weekTitle}>{label}</Text><Text style={styles.weekRange}>{formatWeekRange(monday, weekIndex)}</Text></View>{weekdayLabels.map((weekday, dayIndex) => { const date = addDays(monday, weekIndex * 7 + dayIndex); const workout = program.days[dayIndex]; const dateKey = localDateKey(date); const isToday = dateKey === localDateKey(today); const isCompleted = Object.prototype.hasOwnProperty.call(trainingDates, dateKey); return <Pressable key={dateKey} accessibilityRole="button" accessibilityLabel={`${weekday}, ${workout?.name ?? 'Recovery day'}, ${date.toLocaleDateString()}`} onPress={workout ? () => onOpen(dayIndex) : undefined} style={[styles.calendarRow, isToday && styles.calendarRowToday]}><View style={styles.calendarDate}><Text style={[styles.calendarWeekday, isToday && styles.calendarTextToday]}>{weekday}</Text><Text style={[styles.calendarDayNumber, isToday && styles.calendarTextToday]}>{date.getDate()}</Text></View><View style={styles.calendarWorkout}><Text style={[styles.calendarWorkoutName, isToday && styles.calendarTextToday]}>{workout?.name ?? 'Recovery day'}</Text><Text style={styles.calendarExerciseCount}>{workout ? `${workout.exercises.length} exercises` : 'Rest and recover'}</Text></View><View style={[styles.calendarStatus, isToday && styles.calendarStatusToday, isCompleted && styles.calendarStatusComplete]}><Text style={[styles.calendarStatusText, isToday && styles.calendarStatusTextToday]}>{isCompleted ? 'DONE' : isToday ? 'NOW' : workout ? 'PLAN' : '-'}</Text></View></Pressable>; })}</View>)}</View>;
+  return <View style={styles.calendarSection}><View style={styles.calendarHeading}><View><Text style={styles.sectionTitle}>Your next four weeks</Text><Text style={styles.calendarSubheading}>A steady rhythm, one session at a time</Text></View><Text style={styles.calendarLegend}>TODAY</Text></View>{weekLabels.map((label, weekIndex) => <View key={label} style={styles.weekCard}><View style={styles.weekHeader}><Text style={styles.weekTitle}>{label}</Text><Text style={styles.weekRange}>{formatWeekRange(monday, weekIndex)}</Text></View>{weekdayLabels.map((weekday, weekdayIndex) => { const date = addDays(monday, weekIndex * 7 + weekdayIndex); const dayIndex = getProgramDayIndexForWeekday(program.days.length, weekdayIndex); const workout = dayIndex === undefined ? undefined : program.days[dayIndex]; const dateKey = localDateKey(date); const isToday = dateKey === localDateKey(today); const isCompleted = Object.prototype.hasOwnProperty.call(trainingDates, dateKey); return <Pressable key={dateKey} accessibilityRole={workout ? 'button' : undefined} accessibilityLabel={`${weekday}, ${workout?.name ?? 'Recovery day'}, ${date.toLocaleDateString()}`} onPress={workout && dayIndex !== undefined ? () => onOpen(dayIndex) : undefined} style={[styles.calendarRow, isToday && styles.calendarRowToday]}><View style={styles.calendarDate}><Text style={[styles.calendarWeekday, isToday && styles.calendarTextToday]}>{weekday}</Text><Text style={[styles.calendarDayNumber, isToday && styles.calendarTextToday]}>{date.getDate()}</Text></View><View style={styles.calendarWorkout}><Text style={[styles.calendarWorkoutName, isToday && styles.calendarTextToday]}>{workout?.name ?? 'Recovery day'}</Text><Text style={styles.calendarExerciseCount}>{workout ? `${workout.exercises.length} exercises` : 'Rest and reset'}</Text></View><View style={[styles.calendarStatus, isToday && styles.calendarStatusToday, isCompleted && styles.calendarStatusComplete]}><Text style={[styles.calendarStatusText, isToday && styles.calendarStatusTextToday]}>{isCompleted ? 'DONE' : isToday ? 'TODAY' : workout ? 'PLAN' : 'REST'}</Text></View></Pressable>; })}</View>)}</View>;
 }
 
 function startOfWeek(date: Date) { const mondayOffset = (date.getDay() + 6) % 7; return new Date(date.getFullYear(), date.getMonth(), date.getDate() - mondayOffset); }
@@ -92,15 +98,6 @@ function normalizeTrainingHistory(value: unknown): Record<string, number> {
   return Object.fromEntries(Object.entries(value).filter(([date, seconds]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof seconds === 'number' && Number.isFinite(seconds)).map(([date, seconds]) => [date, Math.max(0, Math.floor(seconds as number))]));
 }
 
-function WeeklyHistory({ trainingDates }: { trainingDates: Record<string, number> }) {
-  const today = new Date();
-  const mondayOffset = (today.getDay() + 6) % 7;
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset);
-  const days = Array.from({ length: 7 }, (_, index) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index));
-  return <View style={styles.historySection}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Weekly history</Text><Text style={styles.sectionHint}>This week</Text></View><View style={styles.historyCard}>{days.map(day => { const duration = trainingDates[localDateKey(day)] ?? 0; const trained = duration > 0 || Object.prototype.hasOwnProperty.call(trainingDates, localDateKey(day)); return <View key={localDateKey(day)} style={styles.historyDay}><Text style={styles.historyLabel}>{day.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2).toUpperCase()}</Text><View style={[styles.historyDot, trained && styles.historyDotActive]}><Text style={[styles.historyCheck, trained && styles.historyCheckActive]}>{trained ? '✓' : ''}</Text></View><Text style={styles.historyDate}>{day.getDate()}</Text><Text style={styles.historyDuration}>{formatDuration(duration)}</Text></View>; })}</View></View>;
-}
-
-function formatDuration(seconds: number) { return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`; }
 function normalizePreviousSets(value: unknown): Record<string, PreviousSet[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).filter(([, sets]) => Array.isArray(sets)).map(([name, sets]) => [name, (sets as unknown[]).map(set => {
@@ -113,20 +110,14 @@ function WorkoutExerciseCard({ exercise, completedSetIndexes = [], previousSets,
   return <View style={styles.trainingCard}><View style={styles.trainingHeader}><Text style={styles.trainingName}>{exercise.name}</Text><Text style={styles.muted}>{exercise.sets.length} sets</Text></View><View style={styles.setHeader}><Text style={styles.setHeaderSet}>SET</Text><Text style={styles.setHeaderText}>WEIGHT</Text><Text style={styles.setHeaderText}>REPS</Text></View>{exercise.sets.map((set, index) => { const previous = previousSets[exercise.name]?.[index]; const completed = completedSetIndexes.includes(index); return <View key={`${exercise.name}-${index}`} style={[styles.setRow, completed && styles.setRowComplete]}><Text style={[styles.setNumber, completed && styles.setNumberComplete]}>{completed ? '✓' : index + 1}</Text><View style={styles.setField}><TextInput value={set.weight} onChangeText={value => onUpdateSet(exercise.name, index, 'weight', value)} placeholder="kg" placeholderTextColor="#8E8E8E" keyboardType="decimal-pad" style={[styles.setInput, completed && styles.setInputComplete]} /><Text style={[styles.previousValue, completed && styles.previousValueComplete]}>{previous?.weight || previous?.reps ? `Last: ${previous.weight || '-'} kg` : 'No previous weight'}</Text></View><View style={styles.setField}><TextInput value={set.reps} onChangeText={value => onUpdateSet(exercise.name, index, 'reps', value)} placeholder="reps" placeholderTextColor="#8E8E8E" keyboardType="number-pad" style={[styles.setInput, completed && styles.setInputComplete]} /><Text style={[styles.previousValue, completed && styles.previousValueComplete]}>{previous?.weight || previous?.reps ? `Last: ${previous.reps || '-'} reps` : 'No previous reps'}</Text></View></View>; })}</View>;
 }
 
-function FocusedSetCard({ exercise, setIndex, previousSets, onUpdateSet }: { exercise: WorkoutExercise; setIndex: number; previousSets: Record<string, PreviousSet[]>; onUpdateSet: (exerciseName: string, setIndex: number, field: 'weight' | 'reps', value: string) => void }) {
-  const set = exercise.sets[setIndex];
-  const previous = previousSets[exercise.name]?.[setIndex];
-  if (!set) return null;
-  return <View style={styles.trainingCard}><View style={styles.trainingHeader}><Text style={styles.trainingName}>{exercise.name}</Text><Text style={styles.muted}>Set {setIndex + 1} of {exercise.sets.length}</Text></View><View style={styles.setHeader}><Text style={styles.setHeaderSet}>SET</Text><Text style={styles.setHeaderText}>WEIGHT</Text><Text style={styles.setHeaderText}>REPS</Text></View><View style={styles.setRow}><Text style={styles.setNumber}>{setIndex + 1}</Text><View style={styles.setField}><TextInput value={set.weight} onChangeText={value => onUpdateSet(exercise.name, setIndex, 'weight', value)} placeholder="kg" placeholderTextColor="#8E8E8E" keyboardType="decimal-pad" style={styles.setInput} /><Text style={styles.previousValue}>{previous?.weight || previous?.reps ? `Last: ${previous.weight || '-'} kg` : 'No previous weight'}</Text></View><View style={styles.setField}><TextInput value={set.reps} onChangeText={value => onUpdateSet(exercise.name, setIndex, 'reps', value)} placeholder="reps" placeholderTextColor="#8E8E8E" keyboardType="number-pad" style={styles.setInput} /><Text style={styles.previousValue}>{previous?.weight || previous?.reps ? `Last: ${previous.reps || '-'} reps` : 'No previous reps'}</Text></View></View></View>;
-}
-
 function TrainingScreen({ program, initialDayIndex, onChange, onBack, onSessionStart, onSessionEnd }: { program: Program; initialDayIndex: number; onChange: (program: Program) => void; onBack: () => void; onSessionStart: () => void; onSessionEnd: (seconds: number) => void }) {
   const dayIndex = Math.min(initialDayIndex, Math.max(program.days.length - 1, 0));
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const [rest, setRest] = useState(0);
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const [completedSetIndexes, setCompletedSetIndexes] = useState<number[]>([]);
+  const [completedSetRecords, setCompletedSetRecords] = useState<CompletedSet[]>([]);
   const [completedExercises, setCompletedExercises] = useState<number[]>([]);
   const [choosingNext, setChoosingNext] = useState(false);
   const [previousSets, setPreviousSets] = useState<Record<string, PreviousSet[]>>({});
@@ -143,54 +134,55 @@ function TrainingScreen({ program, initialDayIndex, onChange, onBack, onSessionS
   const savePreviousSets = () => { const snapshot = Object.fromEntries(day.exercises.map(exercise => [exercise.name, exercise.sets.map(set => ({ weight: set.weight, reps: set.reps }))])); AsyncStorage.getItem(workoutHistoryStorageKey).then(value => { const parsed: unknown = value ? JSON.parse(value) : {}; const history = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}; return AsyncStorage.setItem(workoutHistoryStorageKey, JSON.stringify({ ...history, [historyKey]: snapshot })); }).catch(() => undefined); };
   const finishExercise = () => { setCompletedExercises(current => current.includes(exerciseIndex) ? current : [...current, exerciseIndex]); setCompletedSetIndexes([]); setChoosingNext(true); };
   const nextSetIndex = exercise?.sets.findIndex((_, index) => !completedSetIndexes.includes(index)) ?? -1;
-  const markSetDone = () => { if (nextSetIndex < 0) { finishExercise(); return; } setCompletedSetIndexes(current => [...current, nextSetIndex]); setRest(60); };
+  const markSetDone = () => { if (nextSetIndex < 0) { finishExercise(); return; } const completedSet = exercise?.sets[nextSetIndex]; if (exercise && completedSet) setCompletedSetRecords(current => [...current, { exerciseName: exercise.name, weight: completedSet.weight, reps: completedSet.reps }]); setCompletedSetIndexes(current => [...current, nextSetIndex]); setRest(60); };
   const skipSet = () => { if (nextSetIndex < 0) { finishExercise(); return; } setCompletedSetIndexes(current => [...current, nextSetIndex]); };
   const chooseNextExercise = (nextIndex: number) => { setExerciseIndex(nextIndex); setCompletedSetIndexes([]); setChoosingNext(false); };
-  const toggleSession = () => { if (sessionStartedAt) { savePreviousSets(); onSessionEnd(Math.floor((Date.now() - sessionStartedAt) / 1000)); setSessionStartedAt(null); return; } setCompletedExercises([]); setExerciseIndex(0); setCompletedSetIndexes([]); setChoosingNext(true); onSessionStart(); setSessionStartedAt(Date.now()); };
-  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO PROGRAMS</Text></Pressable><Text style={styles.eyebrow}>ACTIVE WORKOUT</Text><Text style={styles.title}>{day.name}</Text><Text style={styles.subtitle}>{sessionStartedAt ? `${program.name} - choose an exercise, then complete its sets.` : `${program.name} - review the full plan before you start.`}</Text><View style={styles.timerCard}><View><Text style={styles.timerLabel}>SESSION</Text><Text style={styles.timerValue}>{format(sessionStartedAt ? Math.floor((now - sessionStartedAt) / 1000) : 0)}</Text></View><Pressable onPress={toggleSession} style={styles.timerButton}><Text style={styles.timerButtonText}>{sessionStartedAt ? 'END SESSION' : 'START SESSION'}</Text></Pressable></View>{!sessionStartedAt && <><Text style={styles.sectionTitle}>Today's exercises</Text>{day.exercises.map(currentExercise => <WorkoutExerciseCard key={currentExercise.name} exercise={currentExercise} previousSets={previousSets} onUpdateSet={updateSet} />)}</>}{sessionStartedAt && choosingNext && <View style={styles.nextExerciseCard}>{allExercisesComplete ? <><Text style={styles.nextExerciseTitle}>Workout exercises complete</Text><Text style={styles.nextExerciseCopy}>End your session when you are ready.</Text></> : <><Text style={styles.nextExerciseTitle}>{completedExercises.length === 0 ? 'Choose your first exercise' : "What's next?"}</Text><Text style={styles.nextExerciseCopy}>Choose from the exercises in today's plan.</Text>{remainingExercises.map(nextExercise => { const nextIndex = day.exercises.indexOf(nextExercise); return <Pressable key={nextExercise.name} onPress={() => chooseNextExercise(nextIndex)} style={styles.nextExerciseOption}><Text style={styles.nextExerciseOptionText}>{nextExercise.name}</Text><Text style={styles.nextExerciseOptionMeta}>{nextExercise.sets.length} sets</Text></Pressable>; })}</>}</View>}{sessionStartedAt && !choosingNext && exercise && <><View style={styles.exerciseProgress}><Text style={styles.exerciseProgressLabel}>EXERCISE {completedExercises.length + 1} OF {day.exercises.length}</Text><Text style={styles.exerciseProgressHint}>Mark each set done below</Text></View><WorkoutExerciseCard exercise={exercise} completedSetIndexes={completedSetIndexes} previousSets={previousSets} onUpdateSet={updateSet} /></>}{sessionStartedAt && <View style={styles.restCard}><View><Text style={styles.timerLabel}>REST TIMER</Text><Text style={styles.timerValue}>{rest ? format(rest) : 'READY'}</Text></View>{!choosingNext && <View style={styles.restButtonStack}><Pressable onPress={markSetDone} style={styles.timerButton}><Text style={styles.timerButtonText}>{nextSetIndex < 0 ? 'CHOOSE NEXT EXERCISE' : `DONE SET ${nextSetIndex + 1} - START REST`}</Text></Pressable><Pressable onPress={skipSet} style={styles.skipButton}><Text style={styles.skipButtonText}>{nextSetIndex < 0 ? 'FINISH EXERCISE' : `SKIP SET ${nextSetIndex + 1}`}</Text></Pressable></View>}</View>}</ScrollView></SafeAreaView></View>;
+  const toggleSession = () => { if (sessionStartedAt) { savePreviousSets(); const durationSeconds = Math.floor((Date.now() - sessionStartedAt) / 1000); const session: TrainingSession = { id: `session-${Date.now()}`, dateKey: sessionDateKey(new Date()), durationSeconds, sets: completedSetRecords }; AsyncStorage.getItem(trainingSessionsStorageKey).then(value => { const existing = normalizeTrainingSessions(value ? JSON.parse(value) : []); return AsyncStorage.setItem(trainingSessionsStorageKey, JSON.stringify([...existing, session])); }).catch(() => undefined); onSessionEnd(durationSeconds); setSessionStartedAt(null); return; } setCompletedExercises([]); setCompletedSetIndexes([]); setCompletedSetRecords([]); setExerciseIndex(0); setChoosingNext(true); onSessionStart(); setSessionStartedAt(Date.now()); };
+  return <View style={styles.container}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>BACK TO PROGRAMS</Text></Pressable><Text style={styles.eyebrow}>ACTIVE WORKOUT</Text><Text style={styles.title}>{day.name}</Text><Text style={styles.subtitle}>{sessionStartedAt ? `${program.name} - choose an exercise, then complete its sets.` : `${program.name} - review the full plan before you start.`}</Text><View style={styles.timerCard}><View><Text style={styles.timerLabel}>SESSION</Text><Text style={styles.timerValue}>{format(sessionStartedAt ? Math.floor((now - sessionStartedAt) / 1000) : 0)}</Text></View><Pressable onPress={toggleSession} style={styles.timerButton}><Text style={styles.timerButtonText}>{sessionStartedAt ? 'END SESSION' : 'START SESSION'}</Text></Pressable></View>{!sessionStartedAt && <><Text style={styles.sectionTitle}>Today&apos;s exercises</Text>{day.exercises.map(currentExercise => <WorkoutExerciseCard key={currentExercise.name} exercise={currentExercise} previousSets={previousSets} onUpdateSet={updateSet} />)}</>}{sessionStartedAt && choosingNext && <View style={styles.nextExerciseCard}>{allExercisesComplete ? <><Text style={styles.nextExerciseTitle}>Workout exercises complete</Text><Text style={styles.nextExerciseCopy}>End your session when you are ready.</Text></> : <><Text style={styles.nextExerciseTitle}>{completedExercises.length === 0 ? 'Choose your first exercise' : "What's next?"}</Text><Text style={styles.nextExerciseCopy}>Choose from the exercises in today&apos;s plan.</Text>{remainingExercises.map(nextExercise => { const nextIndex = day.exercises.indexOf(nextExercise); return <Pressable key={nextExercise.name} onPress={() => chooseNextExercise(nextIndex)} style={styles.nextExerciseOption}><Text style={styles.nextExerciseOptionText}>{nextExercise.name}</Text><Text style={styles.nextExerciseOptionMeta}>{nextExercise.sets.length} sets</Text></Pressable>; })}</>}</View>}{sessionStartedAt && !choosingNext && exercise && <><View style={styles.exerciseProgress}><Text style={styles.exerciseProgressLabel}>EXERCISE {completedExercises.length + 1} OF {day.exercises.length}</Text><Text style={styles.exerciseProgressHint}>Mark each set done below</Text></View><WorkoutExerciseCard exercise={exercise} completedSetIndexes={completedSetIndexes} previousSets={previousSets} onUpdateSet={updateSet} /></>}{sessionStartedAt && <View style={styles.restCard}><View><Text style={styles.timerLabel}>REST TIMER</Text><Text style={styles.timerValue}>{rest ? format(rest) : 'READY'}</Text></View>{!choosingNext && <View style={styles.restButtonStack}><Pressable onPress={markSetDone} style={styles.timerButton}><Text style={styles.timerButtonText}>{nextSetIndex < 0 ? 'CHOOSE NEXT EXERCISE' : `DONE SET ${nextSetIndex + 1} - START REST`}</Text></Pressable><Pressable onPress={skipSet} style={styles.skipButton}><Text style={styles.skipButtonText}>{nextSetIndex < 0 ? 'FINISH EXERCISE' : `SKIP SET ${nextSetIndex + 1}`}</Text></Pressable></View>}</View>}</ScrollView></SafeAreaView></View>;
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#0B0B0B', flex: 1 },
-  safeArea: { alignSelf: 'center', maxWidth: MaxContentWidth, paddingBottom: BottomTabInset, width: '100%' },
+  container: { backgroundColor: Palette.background, flex: 1 },
+  safeArea: { alignSelf: 'center', flex: 1, maxWidth: MaxContentWidth, paddingBottom: BottomTabInset, width: '100%' },
   content: { padding: 20, paddingBottom: 100 },
   topline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  eyebrow: { color: '#D4AF37', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
-  statusDot: { backgroundColor: '#D4AF37', borderRadius: 5, height: 10, width: 10 },
-  title: { color: '#FFFFFF', fontSize: 30, fontWeight: '900', marginTop: 18 },
-  subtitle: { color: '#B8B8B8', fontSize: 14, lineHeight: 21, marginTop: 6 },
-  todayCard: { backgroundColor: '#D4AF37', borderRadius: 16, marginTop: 24, padding: 18 },
+  eyebrow: { color: Palette.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  statusDot: { backgroundColor: Palette.mint, borderRadius: 5, height: 10, width: 10 },
+  title: { color: Palette.text, fontSize: 32, fontWeight: '900', marginTop: 18 },
+  subtitle: { color: Palette.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 6 },
+  todayCard: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 16, borderWidth: 1, marginTop: 24, padding: 18 },
   todayHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
-  todayKicker: { color: '#000000', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
-  todayDate: { color: '#2A2107', fontSize: 12, fontWeight: '700', marginTop: 5 },
-  todayBadge: { backgroundColor: '#000000', borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6 },
-  todayBadgeText: { color: '#D4AF37', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  todayTitle: { color: '#000000', fontSize: 25, fontWeight: '900', marginTop: 24 },
-  todayCopy: { color: '#2A2107', fontSize: 13, lineHeight: 19, marginTop: 5 },
-  todayButton: { alignItems: 'center', backgroundColor: '#000000', borderRadius: 8, marginTop: 16, paddingVertical: 13 },
-  todayButtonText: { color: '#D4AF37', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
+  todayKicker: { color: Palette.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  todayDate: { color: Palette.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 5 },
+  todayBadge: { backgroundColor: Palette.accentSoft, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6 },
+  todayBadgeText: { color: Palette.accent, fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  todayTitle: { color: Palette.text, fontSize: 25, fontWeight: '900', marginTop: 24 },
+  todayCopy: { color: Palette.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 5 },
+  todayButton: { alignItems: 'center', backgroundColor: Palette.accent, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, paddingHorizontal: 15, paddingVertical: 13 },
+  todayButtonText: { color: Palette.background, fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
+  todayButtonArrow: { color: Palette.background, fontSize: 18, fontWeight: '800' },
   calendarSection: { marginTop: 12 },
   calendarHeading: { alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between' },
-  calendarSubheading: { color: '#B8B8B8', fontSize: 11, marginTop: -7 },
-  calendarLegend: { color: '#D4AF37', fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
-  weekCard: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 12, borderWidth: 1, marginTop: 12, overflow: 'hidden' },
-  weekHeader: { alignItems: 'center', backgroundColor: '#242424', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
-  weekTitle: { color: '#D4AF37', fontSize: 13, fontWeight: '900', letterSpacing: 0.8 },
-  weekRange: { color: '#B8B8B8', fontSize: 10 },
-  calendarRow: { alignItems: 'center', borderTopColor: '#3A3A3A', borderTopWidth: 1, flexDirection: 'row', minHeight: 57, paddingHorizontal: 12, paddingVertical: 8 },
-  calendarRowToday: { backgroundColor: '#2A2412', borderLeftColor: '#D4AF37', borderLeftWidth: 3 },
+  calendarSubheading: { color: Palette.textSecondary, fontSize: 11, marginTop: 3 },
+  calendarLegend: { color: Palette.accent, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
+  weekCard: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 12, borderWidth: 1, marginTop: 12, overflow: 'hidden' },
+  weekHeader: { alignItems: 'center', backgroundColor: Palette.surfaceRaised, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
+  weekTitle: { color: Palette.accent, fontSize: 13, fontWeight: '900', letterSpacing: 0.8 },
+  weekRange: { color: Palette.textSecondary, fontSize: 10 },
+  calendarRow: { alignItems: 'center', borderTopColor: Palette.border, borderTopWidth: 1, flexDirection: 'row', minHeight: 57, paddingHorizontal: 12, paddingVertical: 8 },
+  calendarRowToday: { backgroundColor: Palette.accentSoft, borderLeftColor: Palette.accent, borderLeftWidth: 3 },
   calendarDate: { alignItems: 'center', width: 43 },
-  calendarWeekday: { color: '#B8B8B8', fontSize: 9, fontWeight: '900' },
-  calendarDayNumber: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', marginTop: 3 },
-  calendarTextToday: { color: '#D4AF37' },
+  calendarWeekday: { color: Palette.textSecondary, fontSize: 9, fontWeight: '900' },
+  calendarDayNumber: { color: Palette.text, fontSize: 16, fontWeight: '900', marginTop: 3 },
+  calendarTextToday: { color: Palette.accent },
   calendarWorkout: { flex: 1, marginLeft: 11 },
-  calendarWorkoutName: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  calendarExerciseCount: { color: '#B8B8B8', fontSize: 10, marginTop: 3 },
+  calendarWorkoutName: { color: Palette.text, fontSize: 13, fontWeight: '900' },
+  calendarExerciseCount: { color: Palette.textSecondary, fontSize: 10, marginTop: 3 },
   calendarStatus: { alignItems: 'center', borderColor: '#4A4A4A', borderRadius: 5, borderWidth: 1, minWidth: 38, paddingHorizontal: 5, paddingVertical: 5 },
   calendarStatusToday: { backgroundColor: '#D4AF37', borderColor: '#D4AF37' },
-  calendarStatusComplete: { backgroundColor: '#2A2412', borderColor: '#D4AF37' },
-  calendarStatusText: { color: '#B8B8B8', fontSize: 8, fontWeight: '900' },
-  calendarStatusTextToday: { color: '#000000' },
+  calendarStatusComplete: { backgroundColor: '#1B3027', borderColor: Palette.mint },
+  calendarStatusText: { color: Palette.textSecondary, fontSize: 8, fontWeight: '900' },
+  calendarStatusTextToday: { color: Palette.background },
   identityCard: { alignItems: 'center', backgroundColor: '#242424', borderRadius: 14, flexDirection: 'row', marginTop: 24, padding: 18 },
   avatar: { alignItems: 'center', backgroundColor: '#D4AF37', borderRadius: 28, height: 56, justifyContent: 'center', width: 56 },
   avatarText: { color: '#FFF', fontSize: 25, fontWeight: '900' },
@@ -205,12 +197,16 @@ const styles = StyleSheet.create({
   fieldLabel: { color: '#CFCFCF', fontSize: 11, fontWeight: '800', marginBottom: 6 },
   input: { backgroundColor: '#0B0B0B', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 11 },
   statsRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  stat: { backgroundColor: '#2A2412', borderRadius: 10, flex: 1, padding: 13 },
-  statValue: { color: '#FFFFFF', fontSize: 21, fontWeight: '900' },
-  statLabel: { color: '#D4AF37', fontSize: 10, fontWeight: '800', marginTop: 3 },
-  emptyCard: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 12, borderWidth: 1, padding: 18 },
-  emptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  emptyCopy: { color: '#B8B8B8', fontSize: 13, lineHeight: 19, marginTop: 6 },
+  stat: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 8, borderWidth: 1, flex: 1, padding: 13 },
+  statValue: { color: Palette.text, fontSize: 21, fontWeight: '900' },
+  statLabel: { color: Palette.textSecondary, fontSize: 9, fontWeight: '800', marginTop: 3 },
+  emptyCard: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 12, borderWidth: 1, marginTop: 24, padding: 20 },
+  emptyEyebrow: { color: Palette.accent, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  emptyTitle: { color: Palette.text, fontSize: 22, fontWeight: '900', marginTop: 11 },
+  emptyCopy: { color: Palette.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 6 },
+  emptyButton: { alignItems: 'center', backgroundColor: Palette.accent, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', marginTop: 17, paddingHorizontal: 14, paddingVertical: 13 },
+  emptyButtonText: { color: Palette.background, fontSize: 11, fontWeight: '900' },
+  emptyButtonArrow: { color: Palette.background, fontSize: 18, fontWeight: '800' },
   programCard: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 12, borderWidth: 1, marginBottom: 12, padding: 16 },
   programHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   programName: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },

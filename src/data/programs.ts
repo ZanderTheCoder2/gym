@@ -5,6 +5,21 @@ export type Program = { id: string; name: string; days: WorkoutDay[] };
 
 export const programsStorageKey = '@gym/programs';
 export const setNumbers = [1, 2, 3, 4, 5];
+const weeklyTrainingDays: Record<number, number[]> = {
+  1: [2],
+  2: [0, 3],
+  3: [0, 2, 4],
+  4: [0, 1, 3, 5],
+  5: [0, 1, 2, 3, 4],
+  6: [0, 1, 2, 4, 5, 6],
+  7: [0, 1, 2, 3, 4, 5, 6],
+};
+
+export function getProgramDayIndexForWeekday(programDayCount: number, weekdayIndex: number): number | undefined {
+  const days = weeklyTrainingDays[Math.min(7, Math.max(1, programDayCount))];
+  const dayIndex = days.indexOf(weekdayIndex);
+  return dayIndex < 0 || dayIndex >= programDayCount ? undefined : dayIndex;
+}
 
 export function emptySets(): SetEntry[] {
   return setNumbers.map(() => ({ weight: '', reps: '' }));

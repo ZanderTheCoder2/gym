@@ -3,7 +3,8 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 export default function AppTabs() {
   return (
-    <Tabs>
+    <View style={styles.root}>
+      <Tabs>
       <View style={styles.tabSlot}>
         <TabSlot style={styles.tabSlotContent} />
       </View>
@@ -23,7 +24,8 @@ export default function AppTabs() {
           </TabTrigger>
         </WebTabList>
       </TabList>
-    </Tabs>
+      </Tabs>
+    </View>
   );
 }
 
@@ -40,6 +42,7 @@ function WebTabList(props: TabListProps) {
 }
 
 const styles = StyleSheet.create({
+  root: { backgroundColor: '#111411', flex: 1 },
   tabSlot: { flex: 1, minHeight: 0 },
   tabSlotContent: { backgroundColor: '#111411', flex: 1 },
   tabList: { alignItems: 'center', alignSelf: 'center', backgroundColor: '#1A1F1B', borderColor: '#343C35', borderRadius: 20, borderWidth: 1, boxShadow: '0px 4px 14px rgba(0, 0, 0, 0.2)', flexDirection: 'row', gap: 3, height: 66, justifyContent: 'center', marginBottom: 18, maxWidth: 380, paddingHorizontal: 7, width: '92%', zIndex: 20 },

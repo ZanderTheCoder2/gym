@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 
 export const Palette = {
   background: '#111411',
@@ -15,5 +14,5 @@ export const Palette = {
 
 export const Radius = { small: 8, medium: 12, large: 16 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 120, android: 120, web: 100 }) ?? 100;
+export const BottomTabInset = 0;
 export const MaxContentWidth = 800;

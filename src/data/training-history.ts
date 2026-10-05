@@ -1,5 +1,5 @@
 export type CompletedSet = { exerciseName: string; weight: string; reps: string };
-export type TrainingSession = { id: string; dateKey: string; durationSeconds: number; sets: CompletedSet[] };
+export type TrainingSession = { id: string; dateKey: string; durationSeconds: number; sets: CompletedSet[]; programId?: string; programName?: string; dayName?: string };
 export type TrainingMetrics = { volumeLoad: number; sets: number; reps: number; sessions: number };
 export type WeeklyTrainingMetrics = TrainingMetrics & { weekStart: string };
 
@@ -15,7 +15,15 @@ export function normalizeTrainingSessions(value: unknown): TrainingSession[] {
       if (!set || typeof set !== 'object' || typeof set.exerciseName !== 'string') return [];
       return [{ exerciseName: set.exerciseName, weight: typeof set.weight === 'string' ? set.weight : '', reps: typeof set.reps === 'string' ? set.reps : '' }];
     });
-    return [{ id: session.id, dateKey: session.dateKey, durationSeconds: typeof session.durationSeconds === 'number' ? session.durationSeconds : 0, sets }];
+    return [{
+      id: session.id,
+      dateKey: session.dateKey,
+      durationSeconds: typeof session.durationSeconds === 'number' ? session.durationSeconds : 0,
+      sets,
+      ...(typeof session.programId === 'string' ? { programId: session.programId } : {}),
+      ...(typeof session.programName === 'string' ? { programName: session.programName } : {}),
+      ...(typeof session.dayName === 'string' ? { dayName: session.dayName } : {}),
+    }];
   });
 }
 

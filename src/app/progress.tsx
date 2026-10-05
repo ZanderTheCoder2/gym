@@ -1,20 +1,23 @@
 import { BottomTabInset, MaxContentWidth, Palette } from '@/constants/theme';
 import { exercises, type Exercise } from '@/data/exercises';
 import { createWorkoutExercise, normalizeProgram, programsStorageKey, type Program, type SetEntry, type WorkoutDay, type WorkoutExercise } from '@/data/programs';
+import { getCompletedSetMetrics, normalizeTrainingSessions, trainingSessionsStorageKey, type TrainingSession } from '@/data/training-history';
+import WorkoutsScreen from './workouts';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ProgramsScreen() {
-  const router = useRouter();
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -25,13 +28,14 @@ export default function ProgramsScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const loadPrograms = useCallback(() => {
-    AsyncStorage.getItem(programsStorageKey)
-      .then(value => {
+    Promise.all([AsyncStorage.getItem(programsStorageKey), AsyncStorage.getItem(trainingSessionsStorageKey)])
+      .then(([value, sessionsValue]) => {
         const next = value ? JSON.parse(value).flatMap((item: unknown) => { const normalized = normalizeProgram(item); return normalized ? [normalized] : []; }) : [];
         setPrograms(next);
+        setSessions(normalizeTrainingSessions(sessionsValue ? JSON.parse(sessionsValue) : []));
         setSelectedProgramId(current => current && next.some((program: Program) => program.id === current) ? current : next[0]?.id ?? null);
       })
-      .catch(() => setPrograms([]))
+      .catch(() => { setPrograms([]); setSessions([]); })
       .finally(() => setLoaded(true));
   }, []);
 
@@ -89,13 +93,15 @@ export default function ProgramsScreen() {
   };
 
   if (scanMode) return <View style={[styles.scannerScreen, polished.screen]}><CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handleScan} /><View style={styles.scannerOverlay}><Text style={styles.scannerTitle}>Scan a program</Text><Text style={styles.scannerCopy}>Point the camera at a Forged Fitness QR code.</Text><Pressable onPress={() => setScanMode(false)} style={styles.scannerClose}><Text style={styles.scannerCloseText}>CANCEL</Text></Pressable></View></View>;
+  if (!loaded) return <View style={[styles.loadingScreen, polished.screen]}><ActivityIndicator color={Palette.accent} /><Text style={styles.loadingText}>Loading your plans</Text></View>;
+  if (showBuilder) return <WorkoutsScreen onExit={() => { setShowBuilder(false); loadPrograms(); }} />;
 
   return <View style={[styles.container, polished.screen]}><SafeAreaView style={styles.safeArea}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    {!editingProgramId && <><Text style={styles.eyebrow}>FORGED / PROGRAM LIBRARY</Text><Text style={styles.title}>Shape your plan.</Text><Text style={styles.subtitle}>Fine-tune each day, swap movements, and keep every session ready.</Text>{programs.length > 0 && <Pressable accessibilityRole="button" onPress={openScanner} style={styles.scanButton}><Text style={styles.scanButtonText}>SCAN A PROGRAM</Text></Pressable>}</>}
-    {!programs.length ? <View style={[styles.empty, polished.panel]}><Text style={styles.emptyTitle}>Your program library starts here.</Text><Text style={styles.emptyText}>Create a tailored or manual plan in Workouts. You can edit and share it from here.</Text><Pressable accessibilityRole="button" onPress={() => router.push('/workouts')} style={styles.scanButton}><Text style={styles.scanButtonText}>BUILD YOUR FIRST PROGRAM</Text></Pressable></View> : !editingProgramId ? <ProgramChooser programs={programs} onSelect={program => { setSelectedProgramId(program.id); setSelectedDayIndex(null); setSwapTarget(null); setEditingProgramId(program.id); }} /> : <>
+    {!editingProgramId && <><View style={styles.libraryTopline}><Text style={styles.eyebrow}>FORGED / YOUR TRAINING</Text>{programs.length > 0 && <Pressable accessibilityRole="button" onPress={openScanner} style={styles.scanIconButton}><Text style={styles.scanIconText}>＋ IMPORT</Text></Pressable>}</View><Text style={styles.title}>Your plans.</Text><Text style={styles.subtitle}>Everything you need for your next session, all in one place.</Text></>}
+    {!programs.length ? <View style={[styles.empty, polished.panel]}><Text style={styles.emptyTitle}>Your program library starts here.</Text><Text style={styles.emptyText}>Create a tailored or manual plan and it will be ready to fine-tune here.</Text><Pressable accessibilityRole="button" onPress={() => setShowBuilder(true)} style={styles.primaryAction}><Text style={styles.primaryActionText}>CREATE A PROGRAM</Text><Text style={styles.primaryActionArrow}>→</Text></Pressable></View> : !editingProgramId ? <ProgramChooser programs={programs} onCreate={() => setShowBuilder(true)} onSelect={program => { setSelectedProgramId(program.id); setSelectedDayIndex(null); setSwapTarget(null); setEditingProgramId(program.id); }} /> : <>
       <Pressable onPress={() => { if (selectedDayIndex === null) { setEditingProgramId(null); } else { setSelectedDayIndex(null); } setSwapTarget(null); }} style={styles.backButton}><Text style={styles.backText}>{selectedDayIndex === null ? 'BACK TO PROGRAMS' : 'BACK TO DAYS'}</Text></Pressable>
       {selectedProgram && <View style={styles.editorHeader}><TextInput value={selectedProgram.name} onChangeText={name => updateProgram(program => ({ ...program, name }))} style={styles.programNameInput} /><Pressable onPress={() => setShareProgramId(selectedProgram.id)} style={styles.shareButton}><Text style={styles.shareButtonText}>SHARE</Text></Pressable><Pressable onPress={savePrograms} style={styles.saveButton}><Text style={styles.saveText}>{saved ? 'SAVED' : 'SAVE'}</Text></Pressable><Pressable onPress={() => deleteProgram(selectedProgram)} style={styles.deleteSmall}><Text style={styles.deleteSmallText}>DELETE</Text></Pressable></View>}
-      {selectedProgram && selectedDayIndex === null && <DayChooser program={selectedProgram} onSelect={index => setSelectedDayIndex(index)} />}
+      {selectedProgram && selectedDayIndex === null && <><ProgramHistory program={selectedProgram} sessions={sessions} /><DayChooser program={selectedProgram} onSelect={index => setSelectedDayIndex(index)} /></>}
       {selectedProgram && selectedDayIndex !== null && selectedDay && <>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabs}>{selectedProgram.days.map((day, index) => <Pressable key={`${day.name}-${index}`} onPress={() => { setSelectedDayIndex(index); setSwapTarget(null); }} style={[styles.dayTab, selectedDayIndex === index && styles.dayTabActive]}><Text style={[styles.dayTabText, selectedDayIndex === index && styles.dayTabTextActive]}>{day.name}</Text></Pressable>)}<Pressable onPress={() => { updateProgram(program => ({ ...program, days: [...program.days, { name: `Day ${program.days.length + 1}`, exercises: [] }] })); setSelectedDayIndex(selectedProgram.days.length); }} style={styles.addDay}><Text style={styles.addDayText}>+ DAY</Text></Pressable></ScrollView>
         <View style={[styles.dayEditor, polished.panel]}><TextInput value={selectedDay.name} onChangeText={name => updateDay(() => ({ ...selectedDay, name }))} style={styles.dayNameInput} /><Text style={styles.muted}>{selectedDay.exercises.length} exercises</Text></View>
@@ -108,8 +114,64 @@ export default function ProgramsScreen() {
   </ScrollView></SafeAreaView></View>;
 }
 
-function ProgramChooser({ programs, onSelect }: { programs: Program[]; onSelect: (program: Program) => void }) {
-  return <><Text style={styles.sectionTitle}>Choose a program to edit</Text>{programs.map((program, index) => { const exerciseCount = program.days.reduce((count, day) => count + day.exercises.length, 0); return <Pressable key={program.id} onPress={() => onSelect(program)} style={styles.programCard}><View style={styles.programHeader}><View style={styles.programCopy}><Text style={styles.programName}>{program.name}</Text><Text style={styles.programMeta}>{program.days.length} days - {exerciseCount} exercises</Text></View><Text style={styles.programMark}>{index === 0 ? 'ACTIVE' : 'PLAN'}</Text></View><Text style={styles.programPreview}>{program.days.slice(0, 3).map(day => day.name).join(' - ')}</Text><Text style={styles.editPrompt}>TAP TO EDIT</Text></Pressable>; })}</>;
+function ProgramChooser({ programs, onSelect, onCreate }: { programs: Program[]; onSelect: (program: Program) => void; onCreate: () => void }) {
+  const activeProgram = programs[0];
+  const activeExerciseCount = activeProgram.days.reduce((count, day) => count + day.exercises.length, 0);
+  const totalSessions = programs.reduce((count, program) => count + program.days.length, 0);
+  const totalExercises = programs.reduce((count, program) => count + program.days.reduce((dayCount, day) => dayCount + day.exercises.length, 0), 0);
+  const startLabel = activeProgram.startDate
+    ? `Starts ${new Date(`${activeProgram.startDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+    : 'Ready when you are';
+
+  return <>
+    <View style={styles.overviewRow}>
+      <OverviewStat value={String(programs.length)} label="PLANS" />
+      <OverviewStat value={String(totalSessions)} label="SESSIONS" />
+      <OverviewStat value={String(totalExercises)} label="MOVEMENTS" />
+    </View>
+    <Text style={styles.sectionTitle}>Pick up where you left off</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Edit active program ${activeProgram.name}`} onPress={() => onSelect(activeProgram)} style={({ pressed }) => [styles.featuredProgramCard, pressed && styles.cardPressed]}>
+      <View style={styles.featuredTopline}><Text style={styles.featuredKicker}>ACTIVE PLAN</Text><View style={styles.activePill}><Text style={styles.activePillText}>IN PROGRESS</Text></View></View>
+      <Text style={styles.featuredName}>{activeProgram.name}</Text>
+      <Text style={styles.featuredMeta}>{activeProgram.days.length} training days  ·  {activeExerciseCount} exercises  ·  {startLabel}</Text>
+      <View style={styles.dayPreviewRow}>{activeProgram.days.slice(0, 4).map((day, index) => <View key={`${day.name}-${index}`} style={styles.dayPreviewChip}><Text numberOfLines={1} style={styles.dayPreviewText}>{day.name}</Text></View>)}{activeProgram.days.length > 4 && <Text style={styles.moreDaysText}>+{activeProgram.days.length - 4}</Text>}</View>
+      <View style={styles.featuredFooter}><Text style={styles.featuredAction}>VIEW AND EDIT PLAN</Text><Text style={styles.featuredArrow}>→</Text></View>
+    </Pressable>
+    {programs.length > 1 && <><Text style={styles.sectionTitle}>Other plans</Text>{programs.slice(1).map(program => {
+      const exerciseCount = program.days.reduce((count, day) => count + day.exercises.length, 0);
+      return <Pressable key={program.id} accessibilityRole="button" onPress={() => onSelect(program)} style={({ pressed }) => [styles.programCard, pressed && styles.cardPressed]}>
+        <View style={styles.programHeader}><View style={styles.programCopy}><Text style={styles.programName}>{program.name}</Text><Text style={styles.programMeta}>{program.days.length} training days  ·  {exerciseCount} exercises</Text></View><Text style={styles.otherPlanArrow}>›</Text></View>
+        <Text style={styles.programPreview}>{program.days.slice(0, 3).map(day => day.name).join('  ·  ')}</Text>
+      </Pressable>;
+    })}</>}
+    <Pressable accessibilityRole="button" onPress={onCreate} style={({ pressed }) => [styles.createPlanButton, pressed && styles.cardPressed]}><Text style={styles.createPlanPlus}>＋</Text><View style={styles.createPlanCopy}><Text style={styles.createPlanTitle}>Build another plan</Text><Text style={styles.createPlanHint}>Start with a guided plan or make your own</Text></View><Text style={styles.otherPlanArrow}>›</Text></Pressable>
+  </>;
+}
+
+function OverviewStat({ value, label }: { value: string; label: string }) {
+  return <View style={styles.overviewStat}><Text style={styles.overviewValue}>{value}</Text><Text style={styles.overviewLabel}>{label}</Text></View>;
+}
+
+function ProgramHistory({ program, sessions }: { program: Program; sessions: TrainingSession[] }) {
+  const programExercises = new Set(program.days.flatMap(day => day.exercises.map(exercise => exercise.name)));
+  const history = sessions
+    .filter(session => session.programId ? session.programId === program.id : session.sets.some(set => programExercises.has(set.exerciseName)))
+    .sort((left, right) => right.dateKey.localeCompare(left.dateKey))
+    .slice(0, 5);
+
+  return <View style={styles.programHistory}>
+    <View style={styles.historyHeading}><Text style={styles.historyTitle}>Program history</Text><Text style={styles.historyCount}>{history.length} recent</Text></View>
+    {history.length ? history.map(session => {
+      const metrics = getCompletedSetMetrics(session.sets);
+      const date = new Date(`${session.dateKey}T12:00:00`);
+      const duration = session.durationSeconds ? `${Math.floor(session.durationSeconds / 60)} min` : '';
+      return <View key={session.id} style={styles.historyRow}>
+        <View style={styles.historyDate}><Text style={styles.historyDateDay}>{date.getDate()}</Text><Text style={styles.historyDateMonth}>{date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text></View>
+        <View style={styles.historyCopy}><Text style={styles.historySessionName}>{session.dayName ?? session.programName ?? program.name}</Text><Text style={styles.historySessionMeta}>{metrics.sets} sets{duration ? ` · ${duration}` : ''}</Text></View>
+        {metrics.volumeLoad > 0 && <Text style={styles.historyLoad}>{Math.round(metrics.volumeLoad).toLocaleString()} kg</Text>}
+      </View>;
+    }) : <Text style={styles.historyEmpty}>Completed sessions for this plan will appear here.</Text>}
+  </View>;
 }
 
 function DayChooser({ program, onSelect }: { program: Program; onSelect: (index: number) => void }) {
@@ -122,6 +184,15 @@ function ExerciseEditor({ exercise, swapTarget, onSetSwapTarget, onRemove, onUpd
 
 const styles = StyleSheet.create({
   container: { backgroundColor: '#0B0B0B', flex: 1 }, safeArea: { alignSelf: 'center', flex: 1, maxWidth: MaxContentWidth, paddingBottom: BottomTabInset, width: '100%' }, content: { padding: 20, paddingBottom: 100 },
+  loadingScreen: { alignItems: 'center', flex: 1, justifyContent: 'center' }, loadingText: { color: Palette.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 12 },
+  programHistory: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 12, borderWidth: 1, marginTop: 24, paddingHorizontal: 14, paddingVertical: 12 }, historyHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 9 }, historyTitle: { color: Palette.text, fontSize: 14, fontWeight: '900' }, historyCount: { color: Palette.textSecondary, fontSize: 10 }, historyRow: { alignItems: 'center', borderTopColor: Palette.border, borderTopWidth: 1, flexDirection: 'row', minHeight: 62, paddingVertical: 8 }, historyDate: { alignItems: 'center', backgroundColor: Palette.background, borderRadius: 7, height: 42, justifyContent: 'center', width: 42 }, historyDateDay: { color: Palette.text, fontSize: 15, fontWeight: '900' }, historyDateMonth: { color: Palette.accent, fontSize: 8, fontWeight: '900' }, historyCopy: { flex: 1, marginLeft: 11 }, historySessionName: { color: Palette.text, fontSize: 11, fontWeight: '800' }, historySessionMeta: { color: Palette.textSecondary, fontSize: 9, marginTop: 4 }, historyLoad: { color: Palette.accent, fontSize: 10, fontWeight: '900', marginLeft: 8 }, historyEmpty: { borderTopColor: Palette.border, borderTopWidth: 1, color: Palette.textSecondary, fontSize: 11, lineHeight: 17, paddingTop: 10 },
+  libraryTopline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, scanIconButton: { borderColor: Palette.border, borderRadius: 16, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 }, scanIconText: { color: Palette.textSecondary, fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  overviewRow: { flexDirection: 'row', gap: 9, marginTop: 23 }, overviewStat: { backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 12, borderWidth: 1, flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 13 }, overviewValue: { color: Palette.text, fontSize: 21, fontWeight: '900' }, overviewLabel: { color: Palette.textSecondary, fontSize: 9, fontWeight: '800', letterSpacing: 0.6, marginTop: 3 },
+  featuredProgramCard: { backgroundColor: Palette.surfaceRaised, borderColor: Palette.border, borderRadius: 18, borderWidth: 1, marginTop: 2, overflow: 'hidden', padding: 18 }, cardPressed: { opacity: 0.88, transform: [{ scale: 0.985 }] }, featuredTopline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, featuredKicker: { color: Palette.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, activePill: { backgroundColor: '#26372D', borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 }, activePillText: { color: Palette.mint, fontSize: 8, fontWeight: '900', letterSpacing: 0.5 }, featuredName: { color: Palette.text, fontSize: 22, fontWeight: '900', marginTop: 16 }, featuredMeta: { color: Palette.textSecondary, fontSize: 11, lineHeight: 17, marginTop: 6 },
+  dayPreviewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 16 }, dayPreviewChip: { backgroundColor: Palette.background, borderColor: Palette.border, borderRadius: 7, borderWidth: 1, maxWidth: 145, paddingHorizontal: 9, paddingVertical: 7 }, dayPreviewText: { color: Palette.textSecondary, fontSize: 9, fontWeight: '800' }, moreDaysText: { alignSelf: 'center', color: Palette.textSecondary, fontSize: 10, fontWeight: '800' },
+  featuredFooter: { alignItems: 'center', borderTopColor: Palette.border, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, paddingTop: 14 }, featuredAction: { color: Palette.accent, fontSize: 10, fontWeight: '900', letterSpacing: 0.6 }, featuredArrow: { color: Palette.accent, fontSize: 19 },
+  otherPlanArrow: { color: Palette.accent, fontSize: 24, fontWeight: '400', paddingHorizontal: 5 }, createPlanButton: { alignItems: 'center', backgroundColor: Palette.surface, borderColor: Palette.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginTop: 18, padding: 14 }, createPlanPlus: { alignItems: 'center', backgroundColor: Palette.accentSoft, borderRadius: 16, color: Palette.accent, fontSize: 18, fontWeight: '700', height: 34, lineHeight: 34, textAlign: 'center', width: 34 }, createPlanCopy: { flex: 1, marginLeft: 12 }, createPlanTitle: { color: Palette.text, fontSize: 12, fontWeight: '900' }, createPlanHint: { color: Palette.textSecondary, fontSize: 10, marginTop: 4 },
+  primaryAction: { alignItems: 'center', backgroundColor: Palette.accent, borderRadius: 10, flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingHorizontal: 16, paddingVertical: 14 }, primaryActionText: { color: Palette.background, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }, primaryActionArrow: { color: Palette.background, fontSize: 18, fontWeight: '800' },
   eyebrow: { color: '#D4AF37', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, title: { color: '#FFFFFF', fontSize: 30, fontWeight: '900', marginTop: 18 }, subtitle: { color: '#B8B8B8', fontSize: 14, lineHeight: 21, marginTop: 6 },
   stats: { flexDirection: 'row', gap: 8, marginTop: 24 }, stat: { backgroundColor: '#2A2412', borderRadius: 10, flex: 1, padding: 13 }, statValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '900' }, statLabel: { color: '#D4AF37', fontSize: 10, fontWeight: '800', marginTop: 3 },
   sectionTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '900', marginBottom: 12, marginTop: 28 }, programTabs: { gap: 8, paddingBottom: 4 }, programTab: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, maxWidth: 220, paddingHorizontal: 14, paddingVertical: 11 }, programTabActive: { backgroundColor: '#D4AF37', borderColor: '#D4AF37' }, programTabText: { color: '#CFCFCF', fontSize: 11, fontWeight: '900' }, programTabTextActive: { color: '#000000' },

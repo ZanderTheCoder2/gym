@@ -1,10 +1,11 @@
 import { TabList, TabListProps, Tabs, TabSlot, TabTrigger, TabTriggerSlotProps } from 'expo-router/ui';
+import { AppBootstrap } from '@/components/first-run-setup';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AppTabs() {
   return (
-    <View style={styles.root}>
+    <AppBootstrap><View style={styles.root}>
       <Tabs>
       <View style={styles.tabSlot}>
         <TabSlot style={styles.tabSlotContent} />
@@ -14,11 +15,8 @@ export default function AppTabs() {
           <TabTrigger name="index" href="/" asChild>
             <TabButton accessibilityLabel="Home" label="Home" icon={require('@/assets/images/tabIcons/home.png')} />
           </TabTrigger>
-          <TabTrigger name="workouts" href="/workouts" asChild>
-            <TabButton accessibilityLabel="Workouts" label="Train" icon={require('@/assets/images/tabIcons/explore.png')} />
-          </TabTrigger>
           <TabTrigger name="progress" href="/progress" asChild>
-            <TabButton accessibilityLabel="Programs" label="Programs" icon={require('@/assets/images/tabIcons/home.png')} />
+            <TabButton accessibilityLabel="Train" label="Train" icon={require('@/assets/images/tabIcons/explore.png')} />
           </TabTrigger>
           <TabTrigger name="more" href="/more" asChild>
             <MoreButton accessibilityLabel="More" />
@@ -26,7 +24,7 @@ export default function AppTabs() {
         </CompactTabList>
       </TabList>
       </Tabs>
-    </View>
+    </View></AppBootstrap>
   );
 }
 

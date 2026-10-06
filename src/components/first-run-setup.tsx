@@ -1,6 +1,7 @@
 import { BottomTabInset, MaxContentWidth, Palette } from '@/constants/theme';
 import { emptyMeasurements, localMeasurementDateKey, measurementFields, measurementsStorageKey, normalizeMeasurementEntries, type MeasurementEntry, type MeasurementValues } from '@/data/measurements';
 import { defaultProfile, normalizeProfile, profileStorageKey, setupCompleteStorageKey, type Profile } from '@/data/profile';
+import { cancelDailyWorkoutReminders, workoutReminderStorageKey } from '@/data/workout-reminders';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -18,6 +19,7 @@ const developmentStorageKeys = [
   '@gym/training-sessions',
   '@gym/training-history',
   '@gym/workout-history',
+  workoutReminderStorageKey,
 ];
 const DevelopmentResetContext = createContext<(() => Promise<void>) | null>(null);
 
@@ -31,6 +33,7 @@ export function AppBootstrap({ children }: { children: ReactNode }) {
   const [error, setError] = useState('');
 
   const resetDevelopmentData = useCallback(async () => {
+    await cancelDailyWorkoutReminders();
     await AsyncStorage.multiRemove(developmentStorageKeys);
     setProfile(defaultProfile);
     setError('');

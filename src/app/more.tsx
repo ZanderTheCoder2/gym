@@ -1,12 +1,14 @@
 import { BottomTabInset, MaxContentWidth, Palette } from '@/constants/theme';
 import { emptyMeasurements, localMeasurementDateKey, measurementFields, measurementsStorageKey, normalizeMeasurementEntries, type MeasurementEntry, type MeasurementValues } from '@/data/measurements';
 import { getCompletedSetMetrics, getWeeklyTrainingMetrics, normalizeTrainingSessions, trainingSessionsStorageKey, type TrainingSession } from '@/data/training-history';
+import { normalizeProgram, programsStorageKey, type Program } from '@/data/programs';
+import { cancelDailyWorkoutReminders, defaultWorkoutReminder, isValidReminderTime, normalizeWorkoutReminder, scheduleDailyWorkoutReminders, workoutReminderStorageKey, type WorkoutReminder } from '@/data/workout-reminders';
 import { defaultProfile, normalizeProfile, profileStorageKey, type Profile } from '@/data/profile';
 import { useDevelopmentReset } from '@/components/first-run-setup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 
@@ -16,8 +18,13 @@ export default function MoreScreen() {
   const router = useRouter();
   const resetDevelopmentData = useDevelopmentReset();
   const [profile, setProfile] = useState<Profile>(defaultProfile);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [measurements, setMeasurements] = useState<MeasurementEntry[]>([]);
+  const [reminder, setReminder] = useState<WorkoutReminder>(defaultWorkoutReminder);
+  const [reminderTime, setReminderTime] = useState(defaultWorkoutReminder.time);
+  const [reminderError, setReminderError] = useState('');
+  const [savingReminder, setSavingReminder] = useState(false);
   const [showMeasurements, setShowMeasurements] = useState(false);
   const [metric, setMetric] = useState<'volumeLoad' | 'sets' | 'sessions'>('volumeLoad');
   const [loaded, setLoaded] = useState(false);
@@ -27,14 +34,24 @@ export default function MoreScreen() {
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    Promise.all([AsyncStorage.getItem(profileStorageKey), AsyncStorage.getItem(trainingSessionsStorageKey), AsyncStorage.getItem(measurementsStorageKey)])
-      .then(([profileValue, sessionsValue, measurementsValue]) => {
+    Promise.all([AsyncStorage.getItem(profileStorageKey), AsyncStorage.getItem(trainingSessionsStorageKey), AsyncStorage.getItem(measurementsStorageKey), AsyncStorage.getItem(workoutReminderStorageKey), AsyncStorage.getItem(programsStorageKey)])
+      .then(([profileValue, sessionsValue, measurementsValue, reminderValue, programsValue]) => {
         if (!active) return;
         if (profileValue) setProfile(normalizeProfile(JSON.parse(profileValue)));
         setSessions(normalizeTrainingSessions(sessionsValue ? JSON.parse(sessionsValue) : []));
         setMeasurements(normalizeMeasurementEntries(measurementsValue ? JSON.parse(measurementsValue) : []));
+        const savedReminder = normalizeWorkoutReminder(reminderValue ? JSON.parse(reminderValue) : undefined);
+        const savedPrograms = programsValue ? JSON.parse(programsValue).flatMap((item: unknown) => { const normalized = normalizeProgram(item); return normalized ? [normalized] : []; }) : [];
+        setReminder(savedReminder);
+        setReminderTime(savedReminder.time);
+        setPrograms(savedPrograms);
+        if (savedReminder.enabled && Platform.OS !== 'web') {
+          scheduleDailyWorkoutReminders(savedReminder.time, savedPrograms, false)
+            .then(() => { if (active) setReminderError(''); })
+            .catch(error => { if (active) setReminderError(error instanceof Error ? error.message : 'Could not update workout reminders.'); });
+        }
       })
-      .catch(() => undefined)
+      .catch(() => { if (active) setReminderError('Notification settings could not be loaded. Please try again.'); })
       .finally(() => { if (active) setLoaded(true); });
     return () => { active = false; };
   }, []));
@@ -44,6 +61,40 @@ export default function MoreScreen() {
   const weeks = getWeeklyTrainingMetrics(sessions);
   const thisWeek = weeks[weeks.length - 1];
   const recentSessions = sessions.slice().sort((left, right) => right.dateKey.localeCompare(left.dateKey)).slice(0, 5);
+
+  const saveWorkoutReminder = async () => {
+    if (!isValidReminderTime(reminderTime)) {
+      setReminderError('Enter a valid time in 24-hour format, such as 08:30.');
+      return;
+    }
+    setSavingReminder(true);
+    setReminderError('');
+    try {
+      await scheduleDailyWorkoutReminders(reminderTime, programs, true);
+      const nextReminder = { enabled: true, time: reminderTime };
+      await AsyncStorage.setItem(workoutReminderStorageKey, JSON.stringify(nextReminder));
+      setReminder(nextReminder);
+    } catch (error) {
+      setReminderError(error instanceof Error ? error.message : 'Could not save your workout reminder.');
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const disableWorkoutReminder = async () => {
+    setSavingReminder(true);
+    setReminderError('');
+    try {
+      await cancelDailyWorkoutReminders();
+      const nextReminder = { ...reminder, enabled: false };
+      await AsyncStorage.setItem(workoutReminderStorageKey, JSON.stringify(nextReminder));
+      setReminder(nextReminder);
+    } catch (error) {
+      setReminderError(error instanceof Error ? error.message : 'Could not turn off your workout reminder.');
+    } finally {
+      setSavingReminder(false);
+    }
+  };
 
   const resetEverythingForDevelopment = async () => {
     if (!resetDevelopmentData) {
@@ -75,6 +126,7 @@ export default function MoreScreen() {
     {recentSessions.length ? <View style={[styles.listPanel, polished.panel]}>{recentSessions.map((session, index) => <SessionRow key={session.id} session={session} isLast={index === recentSessions.length - 1} />)}</View> : <View style={[styles.emptyPanel, polished.panel]}><Text style={styles.emptyTitle}>Your first session is waiting.</Text><Text style={styles.emptyCopy}>Start a workout and mark sets complete to build your training history.</Text><Pressable accessibilityRole="button" onPress={() => router.push('/')} style={styles.startButton}><Text style={styles.startButtonText}>GO TO TRAINING</Text></Pressable></View>}
     <Text style={styles.sectionTitle}>Body tracking</Text><Pressable accessibilityRole="button" onPress={() => setShowMeasurements(true)} style={[styles.action, polished.panel]}><Text style={styles.actionTitle}>Measurements</Text><Text style={styles.actionText}>Log weight, body measurements, and track changes over time.</Text></Pressable>
     <Pressable accessibilityRole="button" onPress={() => router.push('/progress')} style={[styles.action, polished.panel]}><Text style={styles.actionTitle}>Training plans</Text><Text style={styles.actionText}>View, edit, and create your saved training plans.</Text></Pressable>
+    <Text style={styles.sectionTitle}>Notifications</Text><View style={[styles.reminderCard, polished.panel]}><Text style={styles.actionTitle}>Daily workout reminder</Text><Text style={styles.actionText}>Choose a time to be reminded what is on today. Reminders are sent by this device, including on rest days.</Text><Text style={styles.fieldLabel}>REMIND ME EVERY DAY AT</Text><TextInput accessibilityLabel="Daily reminder time, 24-hour format" value={reminderTime} onChangeText={value => { setReminderTime(value); setReminderError(''); }} placeholder="08:00" placeholderTextColor="#8E8E8E" keyboardType="numbers-and-punctuation" maxLength={5} style={[styles.input, polished.input]} /><Text style={styles.reminderStatus}>{Platform.OS === 'web' ? 'Daily reminders are available in the iOS and Android apps.' : reminder.enabled ? `Reminder on · ${reminder.time}` : 'Reminder off'}</Text>{reminderError ? <Text accessibilityRole="alert" style={styles.reminderError}>{reminderError}</Text> : null}<Pressable accessibilityRole="button" disabled={savingReminder || Platform.OS === 'web'} onPress={() => void saveWorkoutReminder()} style={[styles.reminderButton, (savingReminder || Platform.OS === 'web') && { opacity: 0.5 }]}><Text style={styles.reminderButtonText}>{savingReminder ? 'SAVING…' : reminder.enabled ? 'UPDATE REMINDER' : 'SAVE DAILY REMINDER'}</Text></Pressable>{reminder.enabled && <Pressable accessibilityRole="button" disabled={savingReminder} onPress={() => void disableWorkoutReminder()} style={styles.reminderOffButton}><Text style={styles.reminderOffText}>TURN OFF REMINDER</Text></Pressable>}</View>
     <Text style={styles.sectionTitle}>Profile</Text><View style={[styles.formCard, polished.panel]}><ProfileField label="Name" value={profile.name} placeholder="Your name" onChangeText={value => setProfile(current => ({ ...current, name: value }))} /><ProfileField label="Age range" value={profile.ageRange} placeholder="Prefer not to say" onChangeText={value => setProfile(current => ({ ...current, ageRange: value }))} /><ProfileField label="Main goal" value={profile.goal} placeholder="Build strength" onChangeText={value => setProfile(current => ({ ...current, goal: value }))} /><ProfileField label="Experience" value={profile.level} placeholder="Beginner" onChangeText={value => setProfile(current => ({ ...current, level: value }))} /><ProfileField label="Training days per week" value={String(profile.trainingDays)} placeholder="3" onChangeText={value => setProfile(current => ({ ...current, trainingDays: Number(value) }))} /><ProfileField label="Preferred days" value={profile.availableDays.map(day => profileDays[day]).join(', ')} placeholder="Mon, Wed, Fri" onChangeText={value => setProfile(current => ({ ...current, availableDays: value.split(',').map(day => profileDays.indexOf(day.trim().slice(0, 3))).filter(day => day >= 0) }))} /><ProfileField label="Session length" value={profile.sessionLength} placeholder="45 minutes" onChangeText={value => setProfile(current => ({ ...current, sessionLength: value }))} /><ProfileField label="Equipment access" value={profile.equipment.join(', ')} placeholder="Full gym" onChangeText={value => setProfile(current => ({ ...current, equipment: value.split(',').map(item => item.trim()).filter(Boolean) }))} /><ProfileField label="Movements or areas to avoid" value={profile.limitations} placeholder="Optional" onChangeText={value => setProfile(current => ({ ...current, limitations: value }))} /></View>
     {__DEV__ && <View style={[styles.developmentPanel, polished.panel]}><Text style={styles.developmentLabel}>DEVELOPMENT ONLY</Text><Text style={styles.actionTitle}>Reset app data</Text><Text style={styles.actionText}>Clear setup, profile, programs, workout history, and measurements, then return to first-run setup.</Text>{confirmDevelopmentReset ? <><Text style={styles.developmentWarning}>This permanently removes all saved app data on this device.</Text><View style={styles.developmentActions}><Pressable accessibilityRole="button" disabled={resettingDevelopmentData} onPress={() => { setConfirmDevelopmentReset(false); setDevelopmentResetError(''); }} style={styles.developmentCancel}><Text style={styles.developmentCancelText}>CANCEL</Text></Pressable><Pressable accessibilityRole="button" disabled={resettingDevelopmentData || !resetDevelopmentData} onPress={() => void resetEverythingForDevelopment()} style={[styles.developmentConfirm, (resettingDevelopmentData || !resetDevelopmentData) && { opacity: 0.5 }]}><Text style={styles.developmentConfirmText}>{resettingDevelopmentData ? 'RESETTING…' : 'CONFIRM RESET'}</Text></Pressable></View></> : <Pressable accessibilityRole="button" onPress={() => setConfirmDevelopmentReset(true)} style={styles.developmentButton}><Text style={styles.developmentConfirmText}>RESET ALL APP DATA</Text></Pressable>}{developmentResetError ? <Text accessibilityRole="alert" style={styles.developmentResetError}>{developmentResetError}</Text> : null}</View>}
   </ScrollView></SafeAreaView></View>;
@@ -185,5 +237,6 @@ const styles = StyleSheet.create({
   listPanel: { backgroundColor: '#171717', borderColor: '#343434', borderRadius: 8, borderWidth: 1, marginTop: 12, paddingHorizontal: 14 }, sessionRow: { alignItems: 'center', flexDirection: 'row', minHeight: 68 }, sessionRowBorder: { borderBottomColor: '#343434', borderBottomWidth: 1 }, sessionDate: { alignItems: 'center', backgroundColor: '#242424', borderRadius: 5, justifyContent: 'center', height: 42, width: 42 }, sessionDay: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' }, sessionMonth: { color: '#D4AF37', fontSize: 8, fontWeight: '900' }, sessionInfo: { flex: 1, marginLeft: 12 }, sessionTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' }, sessionDetails: { color: '#B8B8B8', fontSize: 10, marginTop: 4 }, sessionLoad: { color: '#D4AF37', fontSize: 11, fontWeight: '900', marginLeft: 8 },
   emptyPanel: { backgroundColor: '#171717', borderColor: '#343434', borderRadius: 8, borderWidth: 1, marginTop: 12, padding: 16 }, emptyTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' }, emptyCopy: { color: '#B8B8B8', fontSize: 12, lineHeight: 18, marginTop: 6 }, startButton: { alignSelf: 'flex-start', backgroundColor: '#D4AF37', borderRadius: 6, marginTop: 14, paddingHorizontal: 13, paddingVertical: 10 }, startButtonText: { color: '#0B0B0B', fontSize: 10, fontWeight: '900' },
   action: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, marginTop: 24, padding: 16 }, actionTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' }, actionText: { color: '#B8B8B8', fontSize: 13, marginTop: 5 }, formCard: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, padding: 16 }, field: { marginBottom: 13 }, fieldLabel: { color: '#CFCFCF', fontSize: 11, fontWeight: '800', marginBottom: 6 }, input: { backgroundColor: '#0B0B0B', borderColor: '#3A3A3A', borderRadius: 6, borderWidth: 1, color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 11 },
+  reminderCard: { backgroundColor: '#171717', borderColor: '#3A3A3A', borderRadius: 8, borderWidth: 1, marginTop: 12, padding: 16 }, reminderStatus: { color: Palette.accent, fontSize: 11, fontWeight: '800', marginTop: 11 }, reminderError: { color: Palette.coral, fontSize: 11, lineHeight: 16, marginTop: 10 }, reminderButton: { alignItems: 'center', backgroundColor: Palette.accent, borderRadius: 6, marginTop: 14, paddingVertical: 12 }, reminderButtonText: { color: Palette.background, fontSize: 10, fontWeight: '900' }, reminderOffButton: { alignItems: 'center', borderColor: Palette.border, borderRadius: 6, borderWidth: 1, marginTop: 9, paddingVertical: 11 }, reminderOffText: { color: Palette.textSecondary, fontSize: 10, fontWeight: '900' },
   developmentPanel: { backgroundColor: '#171717', borderColor: Palette.coral, borderRadius: 8, borderWidth: 1, marginTop: 28, padding: 16 }, developmentLabel: { color: Palette.coral, fontSize: 9, fontWeight: '900', letterSpacing: 1.2, marginBottom: 8 }, developmentWarning: { color: Palette.coral, fontSize: 11, lineHeight: 16, marginTop: 12 }, developmentActions: { flexDirection: 'row', gap: 8, marginTop: 14 }, developmentButton: { alignItems: 'center', backgroundColor: Palette.coral, borderRadius: 6, marginTop: 14, paddingVertical: 12 }, developmentCancel: { alignItems: 'center', borderColor: Palette.border, borderRadius: 6, borderWidth: 1, flex: 1, justifyContent: 'center', paddingVertical: 12 }, developmentCancelText: { color: Palette.text, fontSize: 10, fontWeight: '900' }, developmentConfirm: { alignItems: 'center', backgroundColor: Palette.coral, borderRadius: 6, flex: 1, justifyContent: 'center', paddingVertical: 12 }, developmentConfirmText: { color: Palette.background, fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }, developmentResetError: { color: Palette.coral, fontSize: 11, marginTop: 10 },
 });

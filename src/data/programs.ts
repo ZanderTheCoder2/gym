@@ -1,3 +1,5 @@
+import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
+
 export type SetEntry = { weight: string; reps: string };
 export type WorkoutExercise = { name: string; sets: SetEntry[] };
 export type WorkoutDay = { name: string; exercises: WorkoutExercise[] };
@@ -82,4 +84,20 @@ export function normalizeProgram(value: unknown): Program | undefined {
       }) : [],
     })),
   };
+}
+
+export function encodeProgramShare(program: Program): string {
+  return `FG1:${compressToEncodedURIComponent(JSON.stringify({ type: 'forged-fitness-program', version: 1, program }))}`;
+}
+
+export function decodeProgramShare(value: string): Program | undefined {
+  try {
+    const decoded = value.startsWith('FG1:') ? decompressFromEncodedURIComponent(value.slice(4)) : value;
+    if (!decoded) return undefined;
+    const payload: unknown = JSON.parse(decoded);
+    if (!payload || typeof payload !== 'object' || (payload as { type?: unknown }).type !== 'forged-fitness-program') return undefined;
+    return normalizeProgram((payload as { program?: unknown }).program);
+  } catch {
+    return undefined;
+  }
 }

@@ -1,12 +1,11 @@
 import { BottomTabInset, MaxContentWidth, Palette } from '@/constants/theme';
 import { exercises, type Exercise } from '@/data/exercises';
-import { createWorkoutExercise, normalizeProgram, programsStorageKey, type Program, type SetEntry, type WorkoutDay, type WorkoutExercise } from '@/data/programs';
+import { createWorkoutExercise, decodeProgramShare, encodeProgramShare, normalizeProgram, programsStorageKey, type Program, type SetEntry, type WorkoutDay, type WorkoutExercise } from '@/data/programs';
 import { getCompletedSetMetrics, normalizeTrainingSessions, trainingSessionsStorageKey, type TrainingSession } from '@/data/training-history';
 import WorkoutsScreen from './workouts';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect } from 'expo-router';
-import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
@@ -28,6 +27,7 @@ export default function ProgramsScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const loadPrograms = useCallback(() => {
+    setLoaded(false);
     Promise.all([AsyncStorage.getItem(programsStorageKey), AsyncStorage.getItem(trainingSessionsStorageKey)])
       .then(([value, sessionsValue]) => {
         const next = value ? JSON.parse(value).flatMap((item: unknown) => { const normalized = normalizeProgram(item); return normalized ? [normalized] : []; }) : [];
@@ -67,7 +67,7 @@ export default function ProgramsScreen() {
     AsyncStorage.setItem(programsStorageKey, JSON.stringify(orderedPrograms)).then(() => setSaved(true)).catch(() => setSaved(false));
   };
   const programToShare = programs.find(program => program.id === shareProgramId);
-  const shareValue = programToShare ? `FG1:${compressToEncodedURIComponent(JSON.stringify({ type: 'forged-fitness-program', version: 1, program: programToShare }))}` : '';
+  const shareValue = programToShare ? encodeProgramShare(programToShare) : '';
   const openScanner = async () => {
     if (!cameraPermission?.granted) {
       const permission = await requestCameraPermission();
@@ -77,17 +77,12 @@ export default function ProgramsScreen() {
   };
   const handleScan = ({ data }: BarcodeScanningResult) => {
     setScanMode(false);
-    try {
-      const decoded = data.startsWith('FG1:') ? decompressFromEncodedURIComponent(data.slice(4)) : data;
-      if (!decoded) throw new Error('Invalid compressed program');
-      const payload: unknown = JSON.parse(decoded);
-      if (!payload || typeof payload !== 'object' || (payload as { type?: unknown }).type !== 'forged-fitness-program') throw new Error('Invalid program');
-      const imported = normalizeProgram((payload as { program?: unknown }).program);
-      if (!imported) throw new Error('Invalid program');
-      const importedProgram = { ...imported, id: `imported-${Date.now()}` };
+    const sharedProgram = decodeProgramShare(data);
+    if (sharedProgram) {
+      const importedProgram = { ...sharedProgram, id: `imported-${Date.now()}` };
       setPrograms(current => [...current, importedProgram]);
       Alert.alert('Program imported', `${importedProgram.name} was added to your programs.`);
-    } catch {
+    } else {
       Alert.alert('Invalid QR code', 'That code does not contain a Forged Fitness program.');
     }
   };
